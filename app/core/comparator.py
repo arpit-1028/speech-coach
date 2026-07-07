@@ -1,93 +1,139 @@
-from difflib import SequenceMatcher
+import re
 
-VOWELS = {"a", "e", "i", "o", "u", "ai", "au", "oi", "ee", "oo", "aw", "er"}
-
-SIMILAR = {
-    "t": ["d", "th", "dh"],
-    "d": ["t", "dh", "th"],
-    "p": ["b", "f"],
-    "b": ["p", "v", "m"],
-    "k": ["g", "ch"],
-    "g": ["k", "j"],
-    "f": ["v", "p", "th"],
-    "v": ["f", "w", "b"],
-    "w": ["v", "u", "o"],
-    "s": ["z", "sh", "th"],
-    "z": ["s", "j", "dh"],
-    "sh": ["s", "ch"],
-    "ch": ["j", "sh", "t"],
-    "j": ["ch", "z", "g"],
-    "th": ["t", "f", "s", "dh"],
-    "dh": ["d", "z", "th"],
-    "r": ["l", "d"],
-    "l": ["r", "n"],
-    "n": ["ng", "m"],
-    "ng": ["n", "m", "g"],
-    "m": ["n", "ng", "b"],
-    "a": ["e", "o", "u", "ai", "au"],
-    "e": ["a", "i", "ai"],
-    "i": ["e", "ee", "y"],
-    "o": ["a", "u", "au"],
-    "u": ["o", "oo", "w"],
-    "ai": ["a", "e", "i"],
-    "au": ["a", "o", "u", "aw"],
-    "ee": ["i", "e"],
-    "oo": ["u", "o"],
-    "er": ["r", "a"],
+VOWELS_IPA = {
+    "iː", "ɪ", "ɛ", "æ", "ɑː", "ʌ", "ɔː", "ʊ", "uː", "ə",
+    "eɪ", "oʊ", "aɪ", "aʊ", "ɔɪ", "ɜːr", "ɜː", "i", "u", "y"
 }
 
-ACCENT_ACCEPTED = {
+ACCENT_ACCEPTED_IPA = {
     ("v", "w"),
     ("w", "v"),
-    ("th", "t"),
-    ("dh", "d"),
+    ("θ", "t"),
+    ("t", "θ"),
+    ("ð", "d"),
+    ("d", "ð"),
+    ("ɹ", "r"),
+    ("r", "ɹ"),
+    ("r", "ɾ"),
+    ("ɾ", "r"),
+    ("d", "ɖ"),
+    ("ɖ", "d"),
+    ("t", "ʈ"),
+    ("ʈ", "t"),
+    ("ə", "ʌ"),
+    ("ʌ", "ə"),
+    ("ə", "ɑː"),
+    ("ɑː", "ə"),
+    ("ə", "a"),
+    ("a", "ə"),
 }
 
+CLOSE_ACCEPTED_IPA = {
+    # Vowels
+    ("æ", "ɛ"), ("ɛ", "æ"),
+    ("ɑː", "ʌ"), ("ʌ", "ɑː"),
+    ("ɪ", "iː"), ("iː", "ɪ"),
+    ("ʊ", "uː"), ("uː", "ʊ"),
+    ("ɔː", "ɒ"), ("ɒ", "ɔː"),
+    ("eɪ", "ɛ"), ("ɛ", "eɪ"),
+    ("oʊ", "ɔː"), ("ɔː", "oʊ"),
+    
+    # Consonants
+    ("p", "f"), ("f", "p"),
+    ("b", "v"), ("v", "b"),
+    ("s", "ʃ"), ("ʃ", "s"),
+    ("z", "dʒ"), ("dʒ", "z"),
+    ("n", "ŋ"), ("ŋ", "n"),
+}
 
 def compare(expected, spoken, accent="indian"):
+    """
+    Perform needleman-wunsch dynamic programming alignment for phoneme matching.
+    Provides precise alignment with custom scoring logic for Indian accent awareness.
+    """
+    n = len(expected)
+    m = len(spoken)
+    
+    # DP table storing alignment costs
+    dp = [[0.0] * (m + 1) for _ in range(n + 1)]
+    
+    # Base cases
+    for i in range(1, n + 1):
+        dp[i][0] = dp[i-1][0] + 1.0
+    for j in range(1, m + 1):
+        dp[0][j] = dp[0-1][j] + 1.0
+        
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            exp = expected[i-1]
+            spk = spoken[j-1]
+            
+            # Custom accent-aware substitution costs
+            if exp == spk:
+                sub_cost = 0.0
+            elif _is_accent_match(exp, spk, accent):
+                sub_cost = 0.08  # Very low cost for natural accent variants
+            elif _is_close_match(exp, spk):
+                sub_cost = 0.32  # Small penalty for close sounds
+            else:
+                sub_cost = 1.0   # Full penalty for incorrect sounds
+                
+            match_cost = dp[i-1][j-1] + sub_cost
+            del_cost = dp[i-1][j] + 1.0
+            ins_cost = dp[i][j-1] + 1.0
+            
+            dp[i][j] = min(match_cost, del_cost, ins_cost)
+            
+    # Backtrack to construct optimal alignment
+    alignment = []
+    i, j = n, m
+    while i > 0 or j > 0:
+        if i > 0 and j > 0:
+            exp = expected[i-1]
+            spk = spoken[j-1]
+            
+            if exp == spk:
+                sub_cost = 0.0
+                op = "correct"
+            elif _is_accent_match(exp, spk, accent):
+                sub_cost = 0.08
+                op = "accent_match"
+            elif _is_close_match(exp, spk):
+                sub_cost = 0.32
+                op = "close"
+            else:
+                sub_cost = 1.0
+                op = "wrong"
+                
+            if abs(dp[i][j] - (dp[i-1][j-1] + sub_cost)) < 1e-4:
+                alignment.append((op, exp, spk))
+                i -= 1
+                j -= 1
+                continue
+                
+        if i > 0 and abs(dp[i][j] - (dp[i-1][j] + 1.0)) < 1e-4:
+            alignment.append(("missing", expected[i-1], None))
+            i -= 1
+        elif j > 0:
+            alignment.append(("extra", None, spoken[j-1]))
+            j -= 1
+            
+    alignment.reverse()
+    
+    # Map raw alignment to standard result objects
     results = []
-    matcher = SequenceMatcher(None, expected, spoken)
-
-    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == "equal":
-            for offset in range(i2 - i1):
-                exp = expected[i1 + offset]
-                spk = spoken[j1 + offset]
-                results.append(_item("correct", exp, spk))
-        elif tag == "replace":
-            max_len = max(i2 - i1, j2 - j1)
-            for offset in range(max_len):
-                exp = expected[i1 + offset] if i1 + offset < i2 else None
-                spk = spoken[j1 + offset] if j1 + offset < j2 else None
-                results.append(_classify(exp, spk, accent))
-        elif tag == "delete":
-            for index in range(i1, i2):
-                results.append(_item("missing", expected[index], None))
-        elif tag == "insert":
-            for index in range(j1, j2):
-                results.append(_item("extra", None, spoken[index]))
-
+    for op, exp, spk in alignment:
+        results.append(_item(op, exp, spk))
+        
     return results
 
+def _is_accent_match(a, b, accent):
+    if accent not in {"indian", "auto"}:
+        return False
+    return (a, b) in ACCENT_ACCEPTED_IPA or (b, a) in ACCENT_ACCEPTED_IPA
 
-def _classify(expected, spoken, accent):
-    if expected and spoken and expected == spoken:
-        return _item("correct", expected, spoken)
-
-    if expected and spoken and _is_accent_match(expected, spoken, accent):
-        return _item("accent_match", expected, spoken)
-
-    if expected and spoken and _is_similar(expected, spoken):
-        return _item("close", expected, spoken)
-
-    if expected and spoken:
-        return _item("wrong", expected, spoken)
-
-    if expected:
-        return _item("missing", expected, None)
-
-    return _item("extra", None, spoken)
-
+def _is_close_match(a, b):
+    return (a, b) in CLOSE_ACCEPTED_IPA or (b, a) in CLOSE_ACCEPTED_IPA
 
 def _item(kind, expected, spoken):
     sound = expected or spoken or ""
@@ -95,30 +141,19 @@ def _item(kind, expected, spoken):
         "type": kind,
         "expected": expected,
         "spoken": spoken,
-        "sound_group": "vowel" if sound in VOWELS else "consonant",
+        "sound_group": "vowel" if sound in VOWELS_IPA else "consonant",
         "tip": _tip(kind, expected, spoken),
     }
-
-
-def _is_similar(left, right):
-    return right in SIMILAR.get(left, []) or left in SIMILAR.get(right, [])
-
-
-def _is_accent_match(expected, spoken, accent):
-    if accent not in {"indian", "auto"}:
-        return False
-    return (expected, spoken) in ACCENT_ACCEPTED or (spoken, expected) in ACCENT_ACCEPTED
-
 
 def _tip(kind, expected, spoken):
     if kind == "correct":
         return "Clear sound."
     if kind == "accent_match":
-        return "Accepted Indian English pattern. Keep it clear and consistent."
+        return f"Accepted variation. Correct Indian English pronunciation pattern for '{expected}'."
     if kind == "close":
-        return f"Close sound. Expected '{expected}', heard '{spoken}'. Exaggerate the target sound once, then speak naturally."
+        return f"Close sound. Expected '{expected}', heard '{spoken}'. Try speaking slowly to separate these vowels."
     if kind == "missing":
-        return f"Missing '{expected}'. Slow down and finish the sound before moving ahead."
+        return f"Missing '{expected}'. Ensure you finish this sound before moving to the next word."
     if kind == "extra":
-        return f"Extra '{spoken}' detected. Keep the word tighter and avoid adding filler sounds."
-    return f"Expected '{expected}', heard '{spoken}'. Practice this pair slowly three times."
+        return f"Extra '{spoken}' sound. Keep pronunciation tight and clean."
+    return f"Expected '{expected}', heard '{spoken}'. Practice making this sound clearly."

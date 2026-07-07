@@ -2,11 +2,13 @@ import os
 import uuid
 import shutil
 import base64
+import librosa
+import numpy as np
 from fastapi import FastAPI, UploadFile, File, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.services.cmu_service import get_phonemes
+from app.services.cmu_service import get_phonemes, get_phonemes_variants, cmu_to_ipa
 from app.phonemes.cmu_map import CMU_TO_INTERNAL
 from app.core.normalizer import normalize
 from app.core.comparator import compare
@@ -53,6 +55,46 @@ async def check(
 
         print("FILE SAVED:", file_path)
 
+        # Audio Quality Assessment
+        quality_warning = "good"
+        try:
+            y, sr = librosa.load(file_path, sr=16000)
+            if len(y) == 0:
+                quality_warning = "silence"
+            else:
+                peak = np.max(np.abs(y))
+                rms = librosa.feature.rms(y=y)
+                avg_rms = np.mean(rms)
+                
+                if peak < 0.006 or avg_rms < 0.001:
+                    quality_warning = "silence"
+                elif peak < 0.05:
+                    quality_warning = "low_volume"
+                else:
+                    # Check for clipping
+                    clip_count = np.sum(np.abs(y) >= 0.98)
+                    clip_ratio = clip_count / len(y)
+                    if clip_ratio > 0.05:
+                        quality_warning = "clipping"
+                    else:
+                        # Check for constant background noise
+                        sorted_rms = np.sort(rms[0])
+                        quiet_rms = np.mean(sorted_rms[:max(1, len(sorted_rms) // 10)])
+                        if quiet_rms > 0.07 and quiet_rms / avg_rms > 0.55:
+                            quality_warning = "high_noise"
+        except Exception as q_err:
+            print("Audio quality check error:", q_err)
+
+        audio_warning_msg = None
+        if quality_warning == "silence":
+            audio_warning_msg = "No sound detected. Please verify your microphone connection."
+        elif quality_warning == "low_volume":
+            audio_warning_msg = "Quiet recording detected. Try speaking closer to the microphone."
+        elif quality_warning == "clipping":
+            audio_warning_msg = "Distorted recording (clipping). Speak slightly further from the microphone."
+        elif quality_warning == "high_noise":
+            audio_warning_msg = "Constant background noise detected. Find a quieter space if possible."
+
         # Step 2: convert audio → phonemes
         from app.core.spoken_normalizer import normalize_spoken
 
@@ -60,54 +102,75 @@ async def check(
         spoken_raw = recognize_audio(file_path)
         print("RAW SPOKEN:", spoken_raw)
 
+        # Clean spoken phonemes using standard IPA normalization
         spoken = normalize_spoken(spoken_raw)
         print("NORMALIZED SPOKEN:", spoken)
 
-        # Step 3: get expected phonemes (from test dict or fallback)
-        target = word.lower()
-        if target in WORD_DICT:
-            expected = WORD_DICT[target]
-            print("FOUND IN WORD_DICT:", expected)
-        else:
-            expected_cmu = get_phonemes(word)
-            expected = normalize(expected_cmu, CMU_TO_INTERNAL)
-            print("FALLBACK TO CMU:", expected)
+        # Step 3: get expected phoneme variants (CMU dictionary support)
+        expected_variants_cmu = get_phonemes_variants(word)
+        print(f"FOUND {len(expected_variants_cmu)} PRONUNCIATION VARIANTS")
 
-        # Step 4: compare sounds with Indian-speaker-aware tolerance
-        results = compare(expected, spoken, accent=accent)
+        # Step 4: Compare spoken phonemes against all dictionary variants
+        best_sc = -1
+        best_results = []
+        best_expected_ipa = []
+        
+        for variant_cmu in expected_variants_cmu:
+            variant_ipa = cmu_to_ipa(variant_cmu)
+            
+            # Align and compare (Needleman-Wunsch algorithm)
+            results = compare(variant_ipa, spoken, accent=accent)
+            
+            # Score
+            sc = score(results)
+            
+            # Keep the variant that matches the user's speech the best
+            if sc > best_sc:
+                best_sc = sc
+                best_results = results
+                best_expected_ipa = variant_ipa
 
-        # Step 5: score on a 0-100 scale with vowel/consonant weighting
-        sc = score(results)
-        breakdown = score_breakdown(results)
+        # Fallback if no matching variant found
+        if best_sc == -1:
+            best_sc = 0
+            best_results = []
+            best_expected_ipa = []
 
-        # Step 6: feedback with mistakes and improvement drills
-        fb = generate_feedback(results, sc)
+        # If audio quality is bad, prevent severe score penalties
+        if quality_warning in ["silence", "low_volume"] and best_sc < 70:
+            # Shield user from mic issues by capping score deduction
+            best_sc = max(best_sc, 80)
 
-        # Calculate granular scores for advanced frontend UI
-        total_phonemes = max(1, len(results))
+        # Step 5: feedback with mistakes and improvement drills
+        breakdown = score_breakdown(best_results)
+        fb = generate_feedback(best_results, best_sc)
+
+        # If there's an audio quality issue, prepend it to the summary feedback
+        if audio_warning_msg:
+            fb["summary"] = f"⚠️ Note: {audio_warning_msg} | {fb['summary']}"
+
+        # Calculate granular scores for premium frontend UI
+        total_phonemes = max(1, len(best_results))
         correct_count = breakdown.get("correct", 0)
         accent_count = breakdown.get("accent_match", 0)
         close_count = breakdown.get("close", 0)
-        wrong_count = breakdown.get("wrong", 0)
-        missing_count = breakdown.get("missing", 0)
-        extra_count = breakdown.get("extra", 0)
 
-        # Clarity based on exact + accent matched
+        # Clarity based on matches
         clarity_score = round(((correct_count + accent_count) / total_phonemes) * 100)
-        # Confidence based on pronunciation flow and lack of errors
-        confidence_score = round(((correct_count + accent_count + close_count * 0.6) / total_phonemes) * 100)
+        # Confidence based on pronunciation and flow
+        confidence_score = round(((correct_count + accent_count + close_count * 0.65) / total_phonemes) * 100)
         
         # Estimate speaking speed
         speed_label = "normal"
-        if len(spoken) > len(expected) * 1.3:
+        if len(spoken) > len(best_expected_ipa) * 1.3:
             speed_label = "fast"
-        elif len(spoken) < len(expected) * 0.7:
+        elif len(spoken) < len(best_expected_ipa) * 0.7:
             speed_label = "slow"
 
         # Separate weak/strong sounds
         weak_sounds = []
         strong_sounds = []
-        for res in results:
+        for res in best_results:
             sound = res.get("expected") or res.get("spoken") or ""
             if res["type"] in ["correct", "accent_match"]:
                 if sound and sound not in strong_sounds:
@@ -118,12 +181,12 @@ async def check(
 
         return {
             # Backward compatibility keys
-            "expected_word": target,
-            "detected_word": target,
-            "expected_phonemes": expected,
+            "expected_word": word.lower(),
+            "detected_word": word.lower(),
+            "expected_phonemes": best_expected_ipa,
             "spoken_phonemes": spoken,
-            "comparison": results,
-            "score": sc,
+            "comparison": best_results,
+            "score": best_sc,
             "score_breakdown": breakdown,
             "feedback": fb["feedback"],
             "summary": fb["summary"],
@@ -132,8 +195,8 @@ async def check(
             "accent_used": accent,
 
             # New premium gamified dashboard keys
-            "overall_score": sc,
-            "pronunciation_score": sc,
+            "overall_score": best_sc,
+            "pronunciation_score": best_sc,
             "clarity_score": clarity_score,
             "confidence_score": confidence_score,
             "speaking_speed": speed_label,
@@ -141,8 +204,9 @@ async def check(
             "strong_sounds": strong_sounds[:5],
             "detected_mistakes": fb["mistakes"],
             "improvement_tips": fb["improvements"],
-            "sound_level_comparison": results,
+            "sound_level_comparison": best_results,
             "ai_summary": fb["summary"],
+            "audio_quality_warning": audio_warning_msg,
         }
     except Exception as e:
         print("ERROR IN CHECK:", e)
