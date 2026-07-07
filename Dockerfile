@@ -13,11 +13,12 @@ WORKDIR /code
 COPY requirenments.txt .
 RUN pip install --no-cache-dir -r requirenments.txt
 
-# Pre-download the Wav2Vec2 model so it doesn't download on every request
+# Pre-download the Wav2Vec2 and Whisper models so they don't download on every request
 RUN python -c "from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC; \
     MODEL_ID = 'facebook/wav2vec2-xlsr-53-espeak-cv-ft'; \
     Wav2Vec2Processor.from_pretrained(MODEL_ID); \
     Wav2Vec2ForCTC.from_pretrained(MODEL_ID)"
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', compute_type='int8')"
 
 # Copy the rest of the application code
 COPY . .

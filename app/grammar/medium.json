@@ -1,0 +1,32 @@
+[
+    {
+        "id": 1,
+        "scenario": "Job Interview",
+        "wrong": "I am having five years of experience in programming.",
+        "correct": "I have five years of experience in programming."
+    },
+    {
+        "id": 2,
+        "scenario": "Travel plans",
+        "wrong": "We are going to Paris since three years.",
+        "correct": "We have been going to Paris for three years."
+    },
+    {
+        "id": 3,
+        "scenario": "Daily Activity",
+        "wrong": "She is preferring tea than coffee.",
+        "correct": "She prefers tea to coffee."
+    },
+    {
+        "id": 4,
+        "scenario": "Discussion",
+        "wrong": "I am agree with your point of view.",
+        "correct": "I agree with your point of view."
+    },
+    {
+        "id": 5,
+        "scenario": "Meeting",
+        "wrong": "We discussed about the project yesterday.",
+        "correct": "We discussed the project yesterday."
+    }
+]

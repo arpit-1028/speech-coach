@@ -1,0 +1,62 @@
+[
+    {
+        "id": 1,
+        "scenario": "Greeting",
+        "wrong": "Me is happy to meet you.",
+        "correct": "I am happy to meet you."
+    },
+    {
+        "id": 2,
+        "scenario": "Greeting",
+        "wrong": "How is you today?",
+        "correct": "How are you today?"
+    },
+    {
+        "id": 3,
+        "scenario": "School",
+        "wrong": "She go to school every day.",
+        "correct": "She goes to school every day."
+    },
+    {
+        "id": 4,
+        "scenario": "College",
+        "wrong": "I has a computer science class.",
+        "correct": "I have a computer science class."
+    },
+    {
+        "id": 5,
+        "scenario": "Friends",
+        "wrong": "He don't like football.",
+        "correct": "He doesn't like football."
+    },
+    {
+        "id": 6,
+        "scenario": "Shopping",
+        "wrong": "This shoes is very expensive.",
+        "correct": "These shoes are very expensive."
+    },
+    {
+        "id": 7,
+        "scenario": "Restaurant",
+        "wrong": "I want order a coffee.",
+        "correct": "I want to order a coffee."
+    },
+    {
+        "id": 8,
+        "scenario": "Travel",
+        "wrong": "Where the bus stop is?",
+        "correct": "Where is the bus stop?"
+    },
+    {
+        "id": 9,
+        "scenario": "Daily Life",
+        "wrong": "Yesterday I go to market.",
+        "correct": "Yesterday I went to the market."
+    },
+    {
+        "id": 10,
+        "scenario": "Introduction",
+        "wrong": "My name are Parkhi.",
+        "correct": "My name is Parkhi."
+    }
+]

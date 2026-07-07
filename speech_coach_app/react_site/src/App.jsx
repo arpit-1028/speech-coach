@@ -1,11 +1,76 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { API_BASE, checkPronunciation } from './api.js';
+import { 
+  API_BASE, 
+  checkPronunciation, 
+  translateAudio, 
+  fetchGrammarSentence, 
+  checkGrammar 
+} from './api.js';
 import { AudioRecorder } from './audio.js';
 import { loadSession, signInUser, signOutUser } from './auth.js';
 import { allLevels, getLevel, levelGroups, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
 
 const TOOL_TABS = ['translate', 'grammar'];
+
+// Canvas Confetti animation class
+class ConfettiEffect {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.particles = [];
+    this.colors = ['#6366f1', '#a855f7', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9'];
+  }
+  
+  start() {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+    this.particles = [];
+    for (let i = 0; i < 120; i++) {
+      this.particles.push({
+        x: Math.random() * this.canvas.width,
+        y: Math.random() * -this.canvas.height - 20,
+        r: Math.random() * 6 + 4,
+        d: Math.random() * this.canvas.height,
+        color: this.colors[Math.floor(Math.random() * this.colors.length)],
+        tilt: Math.random() * 10 - 5,
+        tiltAngleIncremental: Math.random() * 0.07 + 0.02,
+        tiltAngle: 0
+      });
+    }
+    this.animate();
+  }
+  
+  animate = () => {
+    if (this.particles.length === 0) return;
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    let remaining = false;
+    
+    this.particles.forEach((p, idx) => {
+      p.tiltAngle += p.tiltAngleIncremental;
+      p.y += (Math.cos(p.d) + 3 + p.r / 2) / 2;
+      p.x += Math.sin(p.tiltAngle);
+      p.tilt = Math.sin(p.tiltAngle - idx / 3) * 15;
+      
+      if (p.y <= this.canvas.height) {
+        remaining = true;
+      }
+      
+      this.ctx.beginPath();
+      this.ctx.lineWidth = p.r;
+      this.ctx.strokeStyle = p.color;
+      this.ctx.moveTo(p.x + p.tilt + p.r / 2, p.y);
+      this.ctx.lineTo(p.x + p.tilt, p.y + p.tilt + p.r / 2);
+      this.ctx.stroke();
+    });
+    
+    if (remaining) {
+      requestAnimationFrame(this.animate);
+    } else {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+  }
+}
 
 export default function App() {
   const [user, setUser] = useState(() => loadSession());
@@ -16,18 +81,35 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [toolTab, setToolTab] = useState('translate');
-  const [coachText, setCoachText] = useState('I am preparing for my interview and I want to speak clearly.');
+  
+  // Translation feature states
+  const [transTranscript, setTransTranscript] = useState('');
+  const [transTranslation, setTransTranslation] = useState('');
+  const [transAudioBase64, setTransAudioBase64] = useState('');
+  
+  // Grammar practice states
+  const [grammarLevel, setGrammarLevel] = useState('easy');
+  const [grammarSentence, setGrammarSentence] = useState(null);
+  const [grammarResult, setGrammarResult] = useState(null);
+  const [grammarLoading, setGrammarLoading] = useState(false);
+
   const recorderRef = useRef(null);
+  const confettiCanvasRef = useRef(null);
+  const confettiEffectRef = useRef(null);
 
   const activeLevel = useMemo(() => getLevel(activeLevelId), [activeLevelId]);
-  const completedCount = allLevels.filter((level) => progress.completed[level.id]?.bestScore >= PASS_SCORE).length;
+  const completedCount = allLevels.filter((level) => (progress.completed[level.id]?.bestScore || 0) >= PASS_SCORE).length;
   const nextOpen = allLevels.find((level) => isUnlocked(level, progress) && (progress.completed[level.id]?.bestScore || 0) < PASS_SCORE) || allLevels[0];
   const level = Math.max(1, Math.floor(progress.xp / 100) + 1);
   const levelXp = progress.xp % 100;
-  const lastAttempt = progress.attempts[0];
-  const weakSounds = getWeakSounds(progress.attempts);
-  const coachToolOutput = useMemo(() => runCoachTool(coachText, toolTab), [coachText, toolTab]);
+  const lastAttempt = progress.attempts?.[0];
+  const weakSounds = getWeakSounds(progress.attempts || []);
+
+  useEffect(() => {
+    if (confettiCanvasRef.current && !confettiEffectRef.current) {
+      confettiEffectRef.current = new ConfettiEffect(confettiCanvasRef.current);
+    }
+  }, [screen]);
 
   useEffect(() => {
     if (status !== 'recording') {
@@ -41,6 +123,33 @@ export default function App() {
 
     return () => window.clearInterval(timer);
   }, [status]);
+
+  // Load initial grammar sentence when entering grammar screen
+  useEffect(() => {
+    if (screen === 'grammar') {
+      loadNextGrammar();
+    }
+  }, [screen, grammarLevel]);
+
+  function triggerConfetti() {
+    if (confettiEffectRef.current) {
+      confettiEffectRef.current.start();
+    }
+  }
+
+  async function loadNextGrammar() {
+    setGrammarLoading(true);
+    setGrammarResult(null);
+    setError('');
+    try {
+      const data = await fetchGrammarSentence(grammarLevel);
+      setGrammarSentence(data);
+    } catch (err) {
+      setError('Failed to fetch grammar challenge. Try again.');
+    } finally {
+      setGrammarLoading(false);
+    }
+  }
 
   function handleAuth(event) {
     event.preventDefault();
@@ -71,9 +180,9 @@ export default function App() {
     setScreen('practice');
   }
 
-  async function handleRecord() {
+  async function handleRecord(mode = 'pronunciation') {
     if (status === 'recording') {
-      await stopRecording();
+      await stopRecording(mode);
       return;
     }
 
@@ -88,27 +197,65 @@ export default function App() {
     }
   }
 
-  async function stopRecording() {
+  async function stopRecording(mode) {
     if (!recorderRef.current) return;
     setStatus('processing');
 
     try {
       const audioBlob = await recorderRef.current.stop();
       recorderRef.current = null;
-      const pronunciation = await checkPronunciation(activeLevel.target, audioBlob);
-      const score = normalizeScore(pronunciation.score);
-      const saved = saveAttempt(progress, activeLevel, score, user?.id, pronunciation);
-      setProgress(saved.next);
-      setResult({ pronunciation, score, ...saved });
-      setScreen('result');
-      setStatus('ready');
+
+      if (mode === 'pronunciation') {
+        const pronunciation = await checkPronunciation(activeLevel.target, audioBlob);
+        const score = normalizeScore(pronunciation.score);
+        const saved = saveAttempt(progress, activeLevel, score, user?.id, pronunciation);
+        
+        setProgress(saved.next);
+        setResult({ pronunciation, score, ...saved });
+        setScreen('result');
+        setStatus('ready');
+
+        if (score >= PASS_SCORE) {
+          triggerConfetti();
+        }
+      } else if (mode === 'translate') {
+        const data = await translateAudio(audioBlob);
+        setTransTranscript(data.transcript);
+        setTransTranslation(data.translation);
+        setTransAudioBase64(data.audio);
+        setStatus('ready');
+
+        // Autoplay generated TTS translation audio
+        if (data.audio) {
+          playAudioBase64(data.audio);
+        }
+      } else if (mode === 'grammar') {
+        const data = await checkGrammar(grammarLevel, grammarSentence.id, audioBlob);
+        setGrammarResult(data);
+        setStatus('ready');
+
+        if (data.score >= 75) {
+          triggerConfetti();
+        }
+      }
     } catch (err) {
       setStatus('ready');
-      setError(err.message || 'Could not analyze audio. Check backend and try again.');
+      setError(err.message || 'Could not analyze audio. Please check connection.');
     }
   }
 
-  function listen() {
+  function playAudioBase64(base64) {
+    if (!base64) return;
+    try {
+      const audioUrl = `data:audio/mp3;base64,${base64}`;
+      const audio = new Audio(audioUrl);
+      audio.play().catch((e) => console.error('Base64 Audio play error:', e));
+    } catch (e) {
+      console.error('TTS play failed:', e);
+    }
+  }
+
+  function listenTarget() {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(activeLevel.target);
@@ -123,51 +270,82 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <canvas ref={confettiCanvasRef} className="confetti-canvas" />
+      
       <header className="topbar">
-        <div className="brand">
+        <div className="brand" onClick={() => setScreen('map')}>
           <span className="brand-mark">S</span>
           <div>
             <strong>Sapphire Speech Coach</strong>
-            <small>{user?.name || 'AI communication coach'} / Level {level}</small>
+            <small>{user?.name || 'AI speaking quest'} / Level {level}</small>
           </div>
         </div>
         <div className="top-stats">
           <Stat label="XP" value={progress.xp} />
           <Stat label="Streak" value={`${progress.streak}d`} />
           <Stat label="Done" value={`${completedCount}/${allLevels.length}`} />
-          <button className="icon-text-button" type="button" onClick={handleSignOut}>Logout</button>
+          <button className="logout-btn" type="button" onClick={handleSignOut}>Logout</button>
         </div>
       </header>
 
       <main>
+        <aside className="sidebar">
+          <div className="profile-card">
+            <span className="avatar-ring">SC</span>
+            <strong>{user?.name || 'Speaker'}</strong>
+            <small>Rank: {level >= 4 ? 'Fluency Ninja' : 'Pro Speaker'}</small>
+          </div>
+          <div className="nav-stack">
+            <button 
+              className={`nav-item ${screen === 'map' ? 'nav-item--active' : ''}`} 
+              type="button" 
+              onClick={() => setScreen('map')}
+            >
+              Quest Map
+            </button>
+            <button 
+              className={`nav-item ${screen === 'practice' ? 'nav-item--active' : ''}`} 
+              type="button" 
+              onClick={() => startLevel(nextOpen)}
+            >
+              Practice
+            </button>
+            <button 
+              className={`nav-item ${screen === 'translate' ? 'nav-item--active' : ''}`} 
+              type="button" 
+              onClick={() => {
+                setTransTranscript('');
+                setTransTranslation('');
+                setTransAudioBase64('');
+                setScreen('translate');
+              }}
+            >
+              Translator
+            </button>
+            <button 
+              className={`nav-item ${screen === 'grammar' ? 'nav-item--active' : ''}`} 
+              type="button" 
+              onClick={() => {
+                setGrammarResult(null);
+                setScreen('grammar');
+              }}
+            >
+              Grammar
+            </button>
+          </div>
+        </aside>
+
         {screen === 'map' && (
           <section className="game-shell">
-            <aside className="game-nav" aria-label="Coach navigation">
-              <div className="profile-badge">
-                <span className="avatar-ring">SC</span>
-                <strong>Sapphire Coach</strong>
-                <small>Level {level} Speaker</small>
-              </div>
-              <div className="nav-stack">
-                <button className="nav-item nav-item--active" type="button">Path</button>
-                <button className="nav-item" type="button" onClick={() => startLevel(nextOpen)}>Practice</button>
-                <button className="nav-item" type="button">Analytics</button>
-                <button className="nav-item" type="button" onClick={() => setScreen('tools')}>Coach Tools</button>
-              </div>
-              <button className="session-button" type="button" onClick={() => startLevel(nextOpen)}>
-                Start Session
-              </button>
-            </aside>
-
-            <section className="path-stage" aria-label="Speaking level path">
+            <div className="path-stage">
               <div className="stage-head">
                 <div>
-                  <p className="eyebrow">AI speaking path</p>
-                  <h1>Clear speech quest</h1>
-                  <p>Pass each level with 75% or more to unlock the next speaking challenge.</p>
+                  <p className="eyebrow">AI Speaking Quest</p>
+                  <h1>Clear English Journey</h1>
+                  <p>Practice targets and achieve 75% score to unlock the next level.</p>
                 </div>
                 <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                  Continue Level {nextOpen.id}
+                  Launch Level {nextOpen.id}
                 </button>
               </div>
 
@@ -183,46 +361,55 @@ export default function App() {
                       disabled={!unlocked}
                       key={levelItem.id}
                       type="button"
-                      style={{ '--offset': `${index % 2 === 0 ? -34 : 34}px` }}
+                      style={{ '--offset': `${index % 2 === 0 ? -40 : 40}px` }}
                       onClick={() => startLevel(levelItem)}
                     >
                       <span className="node-copy">
                         <strong>{levelItem.label}</strong>
                         <small>{levelItem.focus}</small>
                       </span>
-                      <span className="node-orb">{done ? 'OK' : current ? '*' : unlocked ? levelItem.id : 'L'}</span>
+                      <span className="node-orb">
+                        {done ? '✓' : current ? '★' : unlocked ? levelItem.id : '🔒'}
+                      </span>
                       <em>{best ? `${best}%` : unlocked ? 'Open' : 'Locked'}</em>
                     </button>
                   );
                 })}
               </div>
-            </section>
+            </div>
 
-            <aside className="mission-rail" aria-label="Daily coach panel">
+            <aside className="mission-rail">
               <div className="mini-stats">
                 <Stat label="Streak" value={`${progress.streak}d`} />
-                <Stat label="Total XP" value={progress.xp} />
+                <Stat label="XP Progress" value={`${levelXp}%`} />
               </div>
-              <div className="coach-card">
-                <div className="coach-screen">
-                  <span>Coach Ready</span>
-                </div>
-              </div>
+              
               <div className="objective-card">
-                <p className="eyebrow">Daily Objective</p>
+                <p className="eyebrow">Today's Mission</p>
                 <h2>{nextOpen.label}</h2>
-                <p>Master this level with 75% clarity to unlock Level {Math.min(nextOpen.id + 1, allLevels.length)}.</p>
-                <div className="xp-track" aria-label="Level progress">
+                <p>Pass this challenge to boost your speaking continuity. Good luck!</p>
+                <div className="xp-track">
                   <span style={{ width: `${progress.completed[nextOpen.id]?.bestScore || 0}%` }} />
                 </div>
                 <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                  Begin Warmup
+                  Start Quest
                 </button>
               </div>
+
               <div className="objective-card">
-                <p className="eyebrow">Weak Sounds</p>
-                <h2>{weakSounds.length ? weakSounds.join(' / ') : 'No weak sound yet'}</h2>
-                <p>{lastAttempt ? `Latest score: ${lastAttempt.score}% in ${lastAttempt.label}.` : 'Your first attempt will create analytics.'}</p>
+                <p className="eyebrow">Weak Sounds Analysis</p>
+                <h2>{weakSounds.length ? weakSounds.join(' / ') : 'Clean Phonemes'}</h2>
+                <p>
+                  {lastAttempt 
+                    ? `Last attempt: ${lastAttempt.score}% in "${lastAttempt.label}".` 
+                    : 'Practice words to record weak sounds.'}
+                </p>
+              </div>
+
+              <div className="objective-card">
+                <p className="eyebrow">Recent Achievements</p>
+                <h2>Streak Master</h2>
+                <p>Earned for practicing 2 days consecutively.</p>
               </div>
             </aside>
           </section>
@@ -231,7 +418,7 @@ export default function App() {
         {screen === 'practice' && (
           <section className="practice-panel">
             <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-              Back to Map
+              ← Back to Map
             </button>
             <p className="eyebrow">{activeLevel.groupTitle} / Level {activeLevel.id}</p>
             <h1>{activeLevel.label}</h1>
@@ -240,43 +427,187 @@ export default function App() {
               <p>{activeLevel.target}</p>
               <small>Focus: {activeLevel.focus}</small>
             </div>
+            
             <LiveCoach status={status} seconds={recordingSeconds} levelType={activeLevel.type} />
+            
             <div className="practice-actions">
-              <button className="secondary-action" type="button" onClick={listen}>
-                Listen First
+              <button className="secondary-action" type="button" onClick={listenTarget}>
+                Listen Target
               </button>
-              <button className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} type="button" onClick={handleRecord}>
-                {status === 'recording' ? 'Stop' : status === 'processing' ? 'Analyzing...' : 'Record'}
+              <button 
+                className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
+                type="button" 
+                onClick={() => handleRecord('pronunciation')}
+              >
+                {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
               </button>
             </div>
-            <p className="api-note">Backend: {API_BASE}</p>
             {error && <div className="error-box">{error}</div>}
+            <p className="api-note">Engine base: {API_BASE}</p>
           </section>
         )}
 
         {screen === 'result' && result && (
-          <ResultScreen result={result} activeLevel={activeLevel} onRetry={() => startLevel(activeLevel)} onMap={() => setScreen('map')} />
-        )}
-
-        {screen === 'tools' && (
           <section className="practice-panel">
             <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-              Back to Map
+              ← Back to Map
             </button>
-            <p className="eyebrow">Secondary Coach Tools</p>
-            <h1>Translation and grammar support</h1>
-            <div className="tool-tabs" role="tablist" aria-label="Coach tools">
-              {TOOL_TABS.map((tab) => (
-                <button className={toolTab === tab ? 'tool-tab tool-tab--active' : 'tool-tab'} key={tab} type="button" onClick={() => setToolTab(tab)}>
-                  {tab}
+            <ResultScreen 
+              result={result} 
+              activeLevel={activeLevel} 
+              onRetry={() => startLevel(activeLevel)} 
+              onMap={() => setScreen('map')} 
+            />
+          </section>
+        )}
+
+        {screen === 'translate' && (
+          <section className="practice-panel">
+            <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
+              ← Back to Map
+            </button>
+            <p className="eyebrow">AI Tools</p>
+            <h1>Voice Translator (Hindi → English)</h1>
+            <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.8rem' }}>
+              Hold the record button, speak a sentence in Hindi, and hear it translated to fluent English instantly.
+            </p>
+
+            <div className="target-card">
+              <span>Status</span>
+              <p style={{ fontSize: '1.5rem', color: '#6366f1' }}>
+                {status === 'recording' ? 'Listening...' : status === 'processing' ? 'Generating translation...' : 'Tap Record to Speak'}
+              </p>
+            </div>
+
+            <div className="practice-actions">
+              <button 
+                className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
+                type="button" 
+                onClick={() => handleRecord('translate')}
+              >
+                {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
+              </button>
+            </div>
+
+            {error && <div className="error-box">{error}</div>}
+
+            {(transTranscript || transTranslation) && (
+              <div className="translate-grid">
+                <div className="trans-card trans-card--hindi">
+                  <h3>Hindi Transcript</h3>
+                  <p>{transTranscript}</p>
+                </div>
+                <div className="trans-card trans-card--english">
+                  <h3>English Translation</h3>
+                  <p>{transTranslation}</p>
+                  {transAudioBase64 && (
+                    <button 
+                      className="speaker-btn" 
+                      type="button" 
+                      onClick={() => playAudioBase64(transAudioBase64)}
+                      style={{ marginTop: '0.5rem' }}
+                      title="Listen Audio"
+                    >
+                      🔊
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {screen === 'grammar' && (
+          <section className="practice-panel">
+            <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
+              ← Back to Map
+            </button>
+            <p className="eyebrow">AI Grammar Quest</p>
+            <h1>AI Grammar Coach</h1>
+
+            <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
+              {['easy', 'medium', 'hard'].map((levelKey) => (
+                <button 
+                  className={`tool-tab ${grammarLevel === levelKey ? 'tool-tab--active' : ''}`} 
+                  key={levelKey} 
+                  type="button" 
+                  onClick={() => setGrammarLevel(levelKey)}
+                >
+                  {levelKey.toUpperCase()}
                 </button>
               ))}
             </div>
-            <textarea value={coachText} onChange={(event) => setCoachText(event.target.value)} />
-            <div className="tool-output">
-              <strong>{coachToolOutput.title}</strong>
-              <p>{coachToolOutput.text}</p>
+
+            {grammarLoading && <div className="error-box" style={{ background: 'transparent' }}>Loading sentence...</div>}
+            
+            {grammarSentence && !grammarLoading && (
+              <div className="target-card">
+                <span className="scenario-badge">{grammarSentence.scenario}</span>
+                <p style={{ fontSize: '1.6rem', color: '#f43f5e', marginTop: '1.2rem' }}>
+                  ❌ "{grammarSentence.wrong}"
+                </p>
+                <small style={{ display: 'block', marginTop: '0.5rem' }}>
+                  Speak the grammatically corrected version of this sentence.
+                </small>
+              </div>
+            )}
+
+            <div className="practice-actions">
+              <button 
+                className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
+                type="button" 
+                onClick={() => handleRecord('grammar')}
+                disabled={grammarLoading}
+              >
+                {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
+              </button>
             </div>
+
+            {error && <div className="error-box">{error}</div>}
+
+            {grammarResult && (
+              <div className="score-layout" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '1.2rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  <div className={`score-orb ${grammarResult.grammar_correct ? 'score-orb--pass' : 'score-orb--retry'}`}>
+                    <strong>{grammarResult.score}</strong>
+                    <span>Score</span>
+                  </div>
+                  <div>
+                    <h1>Grade: {grammarResult.grade || 'N/A'}</h1>
+                    <p>{grammarResult.grammar_correct ? 'Grammar Correct! Great job.' : 'Grammar mistakes detected. Review details below.'}</p>
+                  </div>
+                </div>
+
+                <div className="feedback-list" style={{ marginTop: '0.5rem' }}>
+                  <div style={{ color: '#10b981' }}><strong>Expected:</strong> "{grammarResult.expected_sentence}"</div>
+                  <div style={{ color: '#ec4899' }}><strong>You Spoke:</strong> "{grammarResult.spoken_sentence}"</div>
+                </div>
+
+                {grammarResult.feedback?.length > 0 && (
+                  <div className="feedback-list">
+                    <strong>AI Advice:</strong>
+                    {grammarResult.feedback.map((fbText, i) => <div key={i}>• {fbText}</div>)}
+                  </div>
+                )}
+
+                {grammarResult.mistakes?.length > 0 && (
+                  <div className="mistake-panel">
+                    <h2>Identified Mistakes</h2>
+                    {grammarResult.mistakes.map((mis, i) => (
+                      <article key={i}>
+                        <strong style={{ color: '#f43f5e' }}>{mis.type || 'Error'}</strong>
+                        <span>"{mis.wrong_part}" → "{mis.correct_part}"</span>
+                        <p>{mis.tip}</p>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                <button className="primary-action" type="button" onClick={loadNextGrammar} style={{ width: '100%', justifyContent: 'center' }}>
+                  Next Challenge →
+                </button>
+              </div>
+            )}
           </section>
         )}
       </main>
@@ -288,25 +619,27 @@ function AuthScreen({ onSubmit }) {
   return (
     <main className="auth-shell">
       <section className="auth-panel">
-        <div>
-          <p className="eyebrow">Phase 1 Access</p>
+        <div style={{ textAlign: 'center' }}>
+          <span className="brand-mark" style={{ margin: '0 auto 1rem auto' }}>S</span>
           <h1>Sapphire Speech Coach</h1>
-          <p>AI-powered communication practice for Indian students who know English but want to speak it confidently.</p>
+          <p>AI-powered speaking, clarity training, and grammar feedback for confident English communication.</p>
         </div>
         <form className="auth-form" onSubmit={onSubmit}>
           <label>
-            Name
-            <input name="name" minLength="2" placeholder="Arpit Sharma" required />
+            Full Name
+            <input name="name" minLength="2" placeholder="Arpit Agarwal" required />
           </label>
           <label>
-            Mobile or Student ID
+            Mobile Number
             <input name="mobile" placeholder="9876543210" required />
           </label>
           <label>
             City
             <input name="city" placeholder="Jaipur" />
           </label>
-          <button className="primary-action" type="submit">Start Coaching</button>
+          <button className="primary-action" type="submit" style={{ width: '100%', justifyContent: 'center' }}>
+            Enter Quest Map
+          </button>
         </form>
       </section>
     </main>
@@ -314,18 +647,18 @@ function AuthScreen({ onSubmit }) {
 }
 
 function LiveCoach({ status, seconds, levelType }) {
-  const targetSeconds = levelType === 'paragraph' ? 28 : levelType === 'sentence' ? 12 : 6;
+  const targetSeconds = levelType === 'paragraph' ? 24 : levelType === 'sentence' ? 10 : 5;
   const pace = Math.min(100, Math.round((seconds / targetSeconds) * 100));
   const prompt =
     status === 'recording'
       ? seconds < 2
-        ? 'Start steady'
+        ? 'Speak clearly'
         : seconds > targetSeconds
-          ? 'Wrap naturally'
-          : 'Keep rhythm'
+          ? 'Wrap up now'
+          : 'Maintain rhythm'
       : status === 'processing'
-        ? 'Analyzing speech'
-        : 'Ready for clear speech';
+        ? 'AI Scorer running...'
+        : 'Microphone Ready';
 
   return (
     <div className="live-coach">
@@ -341,73 +674,83 @@ function LiveCoach({ status, seconds, levelType }) {
 }
 
 function ResultScreen({ result, activeLevel, onRetry, onMap }) {
-  const breakdown = result.pronunciation.score_breakdown || {};
+  const breakdown = result.pronunciation?.score_breakdown || {};
   return (
-    <section className="result-panel">
-      <p className="eyebrow">Instant Feedback</p>
+    <div className="result-panel">
+      <p className="eyebrow">Instant Analysis</p>
+      
       <div className="score-layout">
         <div className={`score-orb ${result.passed ? 'score-orb--pass' : 'score-orb--retry'}`}>
-          <strong>{result.score}</strong>
+          <strong>{result.overall_score || result.score}</strong>
           <span>Score</span>
         </div>
         <div>
-          <h1>{result.passed ? 'Level Passed' : 'Retry Needed'}</h1>
-          <p>{result.passed ? `Great. You earned ${result.xpEarned} XP.` : 'Slow down, speak each sound clearly, and try again.'}</p>
+          <h1>{result.passed ? 'Challenge Passed!' : 'Need Practice'}</h1>
+          <p>{result.passed ? `Fabulous! You unlocked ${result.xpEarned || 20} XP.` : 'Try reading slower, enunciate vowels, and retry.'}</p>
         </div>
       </div>
+
       <div className="breakdown-grid">
-        <Stat label="Clear" value={breakdown.correct || 0} />
-        <Stat label="Accent OK" value={breakdown.accent_match || 0} />
-        <Stat label="Close" value={breakdown.close || 0} />
-        <Stat label="Needs Work" value={(breakdown.wrong || 0) + (breakdown.missing || 0) + (breakdown.extra || 0)} />
+        <Stat label="Clarity" value={`${result.clarity_score || 0}%`} />
+        <Stat label="Confidence" value={`${result.confidence_score || 0}%`} />
+        <Stat label="Pace / Speed" value={result.speaking_speed || 'normal'} />
+        <Stat label="XP Earned" value={`+${result.xpEarned || 0}`} />
       </div>
+
       <div className="feedback-list">
-        {result.pronunciation.summary && <div>{result.pronunciation.summary}</div>}
-        {(result.pronunciation.feedback || []).map((item) => (
-          <div key={item}>{item}</div>
+        <strong>Coach Feedback:</strong>
+        <div>• {result.ai_summary || result.pronunciation?.summary}</div>
+        {(result.pronunciation?.feedback || []).map((item) => (
+          <div key={item}>• {item}</div>
         ))}
       </div>
-      {result.pronunciation.mistakes?.length > 0 && (
+
+      {result.weak_sounds?.length > 0 && (
+        <div className="feedback-list" style={{ background: 'rgba(244, 63, 94, 0.03)', borderColor: 'rgba(244, 63, 94, 0.2)' }}>
+          <strong style={{ color: '#f43f5e' }}>Practice Target Sounds:</strong>
+          <div>{result.weak_sounds.join(' / ')}</div>
+        </div>
+      )}
+
+      {result.sound_level_comparison?.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <strong>Phonemes Sound Map:</strong>
+          <div className="sound-grid">
+            {result.sound_level_comparison.slice(0, 60).map((item, index) => (
+              <span 
+                className={`sound-pill sound-pill--${item.type}`} 
+                title={item.tip} 
+                key={`${item.expected}-${item.spoken}-${index}`}
+              >
+                {item.spoken || item.expected || '-'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {result.detected_mistakes?.length > 0 && (
         <div className="mistake-panel">
-          <h2>Your Mistakes</h2>
-          {result.pronunciation.mistakes.map((item, index) => (
+          <h2>Sound Mistakes Breakdown</h2>
+          {result.detected_mistakes.map((item, index) => (
             <article key={`${item.expected}-${item.spoken}-${index}`}>
-              <strong>{item.type.replace('_', ' ')}</strong>
-              <span>Expected {item.expected || '-'} / Heard {item.spoken || '-'}</span>
+              <strong style={{ color: '#f43f5e' }}>{item.type.replace('_', ' ')}</strong>
+              <span>Expected "{item.expected || '-'}" / Heard "{item.spoken || '-'}"</span>
               <p>{item.tip}</p>
             </article>
           ))}
         </div>
       )}
-      {result.pronunciation.improvements?.length > 0 && (
-        <div className="mistake-panel">
-          <h2>How To Improve</h2>
-          {result.pronunciation.improvements.map((item) => (
-            <article key={item}>
-              <p>{item}</p>
-            </article>
-          ))}
-        </div>
-      )}
-      {result.pronunciation.comparison?.length > 0 && (
-        <div className="sound-grid" aria-label="Sound breakdown">
-          {result.pronunciation.comparison.slice(0, 60).map((item, index) => (
-            <span className={`sound-pill sound-pill--${item.type}`} title={item.tip} key={`${item.expected}-${item.spoken}-${index}`}>
-              {item.spoken || item.expected || '-'}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="practice-actions">
+
+      <div className="practice-actions" style={{ marginTop: '1rem' }}>
         <button className="secondary-action" type="button" onClick={onRetry}>
-          Try Again
+          Practice Again
         </button>
         <button className="primary-action" type="button" onClick={onMap}>
-          Back to Map
+          Continue Quest Map
         </button>
       </div>
-      <small className="api-note">Target: {activeLevel.target}</small>
-    </section>
+    </div>
   );
 }
 
@@ -437,48 +780,4 @@ function getWeakSounds(attempts) {
     .sort((left, right) => right[1] - left[1])
     .slice(0, 3)
     .map(([sound]) => sound);
-}
-
-function runCoachTool(text, tab) {
-  const clean = text.trim();
-  if (!clean) {
-    return { title: 'No text', text: 'Type one sentence to get support.' };
-  }
-
-  if (tab === 'translate') {
-    return {
-      title: 'Hindi Meaning',
-      text: simpleTranslate(clean)
-    };
-  }
-
-  return {
-    title: 'Grammar Suggestion',
-    text: grammarSuggestion(clean)
-  };
-}
-
-function simpleTranslate(text) {
-  const dictionary = {
-    interview: 'interview',
-    confidence: 'atmavishwas',
-    clearly: 'saaf tareeke se',
-    project: 'project',
-    speak: 'bolna',
-    practicing: 'practice kar raha hoon'
-  };
-  return text
-    .split(/\s+/)
-    .map((word) => dictionary[word.toLowerCase().replace(/[.,]/g, '')] || word)
-    .join(' ');
-}
-
-function grammarSuggestion(text) {
-  let suggestion = text
-    .replace(/\bi am\b/gi, 'I am')
-    .replace(/\bi\b/g, 'I')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (suggestion && !/[.!?]$/.test(suggestion)) suggestion += '.';
-  return suggestion;
 }

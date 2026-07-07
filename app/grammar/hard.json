@@ -1,0 +1,32 @@
+[
+    {
+        "id": 1,
+        "scenario": "Business Meeting",
+        "wrong": "If I will get the promotion, I will move to New York.",
+        "correct": "If I get the promotion, I will move to New York."
+    },
+    {
+        "id": 2,
+        "scenario": "Formal discussion",
+        "wrong": "Although he worked hard, but he failed the exam.",
+        "correct": "Although he worked hard, he failed the exam."
+    },
+    {
+        "id": 3,
+        "scenario": "Project Review",
+        "wrong": "The project would have succeeded if we plan it better.",
+        "correct": "The project would have succeeded if we had planned it better."
+    },
+    {
+        "id": 4,
+        "scenario": "Office Scenario",
+        "wrong": "I look forward to meet you next week.",
+        "correct": "I look forward to meeting you next week."
+    },
+    {
+        "id": 5,
+        "scenario": "Technical debate",
+        "wrong": "Neither the manager nor the developers was satisfied.",
+        "correct": "Neither the manager nor the developers were satisfied."
+    }
+]
