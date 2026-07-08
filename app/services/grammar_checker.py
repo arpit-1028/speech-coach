@@ -1,14 +1,21 @@
 import os
 import json
-
 from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
 
-client = genai.Client(
-    api_key=os.getenv("API")
-)
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        api_key = os.getenv("API") or os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("Gemini API Key is missing. Please add it to your Hugging Face Space secrets under the name 'API'.")
+        _client = genai.Client(api_key=api_key)
+    return _client
+
 PROMPT = """
 You are an AI English Grammar Coach.
 
@@ -51,7 +58,7 @@ Return ONLY valid JSON.
 """
 
 def check_grammar(correct, spoken):
-
+    client = get_client()
     prompt = PROMPT.format(
         correct=correct,
         spoken=spoken,
@@ -68,7 +75,6 @@ def check_grammar(correct, spoken):
     print(response.text)
 
     text = response.text
-
     text = text.replace("```json", "")
     text = text.replace("```", "")
     text = text.strip()
@@ -76,12 +82,8 @@ def check_grammar(correct, spoken):
     return json.loads(text)
 
 if __name__ == "__main__":
-
     result = check_grammar(
-
         "She goes to school every day.",
-
         "She go to school every day."
     )
-
     print(result)
