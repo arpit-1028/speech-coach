@@ -6,11 +6,18 @@ export const levelGroups = [
     title: 'Word Practice',
     subtitle: 'Build clean sounds first',
     levels: [
-      { id: 1, label: 'Very Easy Words', type: 'word', target: 'cat', focus: 'short clear vowel' },
-      { id: 2, label: 'Easy Words', type: 'word', target: 'water', focus: 'w sound and ending clarity' },
-      { id: 3, label: 'Medium Words', type: 'word', target: 'village', focus: 'v/w distinction' },
-      { id: 4, label: 'Hard Words', type: 'word', target: 'important', focus: 'stress on second syllable' },
-      { id: 5, label: 'Very Hard Words', type: 'word', target: 'pronunciation', focus: 'stress and syllable control' }
+      { id: 1,  label: 'Cat',           type: 'word', target: 'cat',           focus: 'short /æ/ vowel' },
+      { id: 2,  label: 'Dog',           type: 'word', target: 'dog',           focus: 'voiced stop + short vowel' },
+      { id: 3,  label: 'Book',          type: 'word', target: 'book',          focus: 'short /ʊ/ vowel' },
+      { id: 4,  label: 'Think',         type: 'word', target: 'think',         focus: 'TH /θ/ sound' },
+      { id: 5,  label: 'Water',         type: 'word', target: 'water',         focus: 'W sound and flap T' },
+      { id: 6,  label: 'Village',       type: 'word', target: 'village',       focus: 'V vs W distinction' },
+      { id: 7,  label: 'Mother',        type: 'word', target: 'mother',        focus: 'voiced TH /ð/' },
+      { id: 8,  label: 'School',        type: 'word', target: 'school',        focus: 'SK cluster' },
+      { id: 9,  label: 'Three',         type: 'word', target: 'three',         focus: 'TH + R cluster' },
+      { id: 10, label: 'Important',     type: 'word', target: 'important',     focus: 'stress on 2nd syllable' },
+      { id: 11, label: 'Beautiful',     type: 'word', target: 'beautiful',     focus: 'BJ cluster + schwa' },
+      { id: 12, label: 'Pronunciation', type: 'word', target: 'pronunciation', focus: 'multi-syllable stress' },
     ]
   },
   {
@@ -18,9 +25,10 @@ export const levelGroups = [
     title: 'Phrase Practice',
     subtitle: 'Connect words naturally',
     levels: [
-      { id: 6, label: 'Easy Phrases', type: 'phrase', target: 'thank you', focus: 'th sound without rushing' },
-      { id: 7, label: 'Medium Phrases', type: 'phrase', target: 'nice to meet you', focus: 'smooth linking' },
-      { id: 8, label: 'Hard Phrases', type: 'phrase', target: 'I would like to explain', focus: 'rhythm and confidence' }
+      { id: 13, label: 'Thank You',             type: 'phrase', target: 'thank you',              focus: 'TH sound without rushing' },
+      { id: 14, label: 'Good Morning',           type: 'phrase', target: 'good morning',            focus: 'smooth linking' },
+      { id: 15, label: 'Nice to Meet You',       type: 'phrase', target: 'nice to meet you',        focus: 'connected speech' },
+      { id: 16, label: 'I Would Like to Explain', type: 'phrase', target: 'I would like to explain', focus: 'rhythm and confidence' }
     ]
   },
   {
@@ -28,9 +36,9 @@ export const levelGroups = [
     title: 'Sentence Practice',
     subtitle: 'Speak complete thoughts',
     levels: [
-      { id: 9, label: 'Easy Sentences', type: 'sentence', target: 'I am learning to speak clearly.', focus: 'steady pace' },
-      { id: 10, label: 'Medium Sentences', type: 'sentence', target: 'Communication is very important for interviews.', focus: 'word stress' },
-      { id: 11, label: 'Hard Sentences', type: 'sentence', target: 'I can explain my project with confidence and clarity.', focus: 'continuation without fumbling' }
+      { id: 17, label: 'Learning Clearly',   type: 'sentence', target: 'I am learning to speak clearly.',                                focus: 'steady pace' },
+      { id: 18, label: 'Communication',       type: 'sentence', target: 'Communication is very important for interviews.',                focus: 'word stress' },
+      { id: 19, label: 'Project Confidence',  type: 'sentence', target: 'I can explain my project with confidence and clarity.',           focus: 'continuation without fumbling' }
     ]
   },
   {
@@ -39,8 +47,8 @@ export const levelGroups = [
     subtitle: 'Practice continuous speech',
     levels: [
       {
-        id: 12,
-        label: 'Short Paragraph',
+        id: 20,
+        label: 'Self Introduction',
         type: 'paragraph',
         target: 'Good morning. My name is Arpit. I am practicing spoken English so I can speak clearly in interviews and presentations.',
         focus: 'confidence, pace, and sentence flow'

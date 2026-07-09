@@ -1,5 +1,6 @@
 import os
 import platform
+import uuid
 
 # Help phonemizer find eSpeak on Windows before importing transformers
 if platform.system() == "Windows":
@@ -17,38 +18,51 @@ MODEL_ID = "facebook/wav2vec2-xlsr-53-espeak-cv-ft"
 processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
 model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
 
-def preprocess_audio(input_file, output_file="clean.wav"):
-    audio, sr = librosa.load(input_file, sr=16000)
 
-    # Use a much less aggressive trim (top_db=60 instead of 25) so quiet consonants like 'p' aren't cut off
-    trimmed, _ = librosa.effects.trim(audio, top_db=60)
+def preprocess_audio(input_file):
+    """Load, convert to mono 16kHz, trim silence, normalize volume."""
+    audio, sr = librosa.load(input_file, sr=16000, mono=True)
 
-    # normalize the audio volume
-    if np.max(np.abs(trimmed)) > 0:
-        trimmed = trimmed / np.max(np.abs(trimmed))
+    if len(audio) == 0:
+        return audio
 
-    sf.write(output_file, trimmed, 16000)
-    return output_file, trimmed
+    # Trim silence with gentle threshold to keep quiet consonants
+    trimmed, _ = librosa.effects.trim(audio, top_db=50)
+
+    # If trimming removed everything, use original
+    if len(trimmed) < 1600:  # less than 0.1s at 16kHz
+        trimmed = audio
+
+    # Peak normalize to [-1, 1]
+    peak = np.max(np.abs(trimmed))
+    if peak > 0:
+        trimmed = trimmed / peak
+
+    return trimmed
+
 
 def recognize_audio(filename):
-    clean_file, speech_array = preprocess_audio(filename)
+    """Extract IPA phonemes from an audio file using Wav2Vec2."""
+    speech_array = preprocess_audio(filename)
 
-    print("PROCESSING FILE:", clean_file)
+    if len(speech_array) == 0:
+        return []
+
+    print("PROCESSING AUDIO, length:", len(speech_array), "samples")
 
     # Process audio with Wav2Vec2
     inputs = processor(speech_array, sampling_rate=16000, return_tensors="pt")
-    
+
     with torch.no_grad():
         logits = model(inputs.input_values).logits
-        
+
     # Decode the most likely phonemes
     predicted_ids = torch.argmax(logits, dim=-1)
     transcription = processor.batch_decode(predicted_ids)
-    
-    # transcription returns a list of strings, we take the first element
-    phonemes_str = transcription[0]
-    
+
+    phonemes_str = transcription[0] if transcription else ""
+
     print("RAW PHONEMES:", phonemes_str)
 
-    # Return as a list of individual phonemes, just like Allosaurus did
-    return phonemes_str.split() if phonemes_str else []
+    # Return as a list of individual IPA characters/tokens
+    return list(phonemes_str.replace(" ", "")) if phonemes_str else []

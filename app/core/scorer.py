@@ -1,108 +1,67 @@
-VOWELS_IPA = {
-    "iː", "ɪ", "ɛ", "æ", "ɑː", "ʌ", "ɔː", "ʊ", "uː", "ə",
-    "eɪ", "oʊ", "aɪ", "aʊ", "ɔɪ", "ɜːr", "ɜː", "i", "u", "y"
-}
+VOWELS = {"a", "e", "i", "o", "u", "ai", "au", "oi", "ee", "oo", "aw", "er",
+          "\u026A", "i\u02D0", "\u025B", "\u00E6", "\u0251\u02D0", "\u028C", "\u0254\u02D0",
+          "\u028A", "u\u02D0", "\u0259", "e\u026A", "o\u028A", "a\u026A", "a\u028A",
+          "\u0254\u026A", "\u025C\u02D0r", "\u025C\u02D0", "i", "u", "a", "e", "o",
+          "\u0259\u028A", "\u025A"}
+
 
 def score(results):
     """
-    Weighted scoring algorithm based on alignment results:
-    - 40% Pronunciation Accuracy
-    - 20% Vowel Accuracy
-    - 20% Consonant Accuracy
-    - 10% Stress / Vowel emphasis
-    - 10% Fluency (penalized by deletions/insertions)
+    Weighted scoring: vowels count 1.35x, consonants 1.0x.
     
-    Tolerates ending consonant deletions and scales penalties for minor accent variations.
+    Credit per type:
+      correct       = 100%
+      accent_match  = 100%  (Indian English accepted variant)
+      close         =  65%
+      wrong         =  15%
+      missing       =   0%  (but reduced weight if at word end)
+      extra         =   0%  (but reduced weight always)
+    
+    Expected score ranges:
+      Correct pronunciation     -> 90-100
+      Minor mistakes             -> 80-90
+      Understandable             -> 65-80
+      Noticeable issues          -> 45-65
+      Very poor                  -> below 45
     """
     if not results:
         return 0
 
-    n_results = len(results)
-    
-    # 1. Pronunciation Accuracy Score
-    total_pr_weight = 0.0
-    earned_pr = 0.0
+    total_weight = 0.0
+    earned = 0.0
+    n = len(results)
 
     for idx, item in enumerate(results):
         kind = item["type"]
         is_vowel = item.get("sound_group") == "vowel"
-        
         weight = 1.35 if is_vowel else 1.0
-        
-        # Ending Consonant Penalty Reduction:
-        # If the sound is missing, is a consonant, and lies at the end of the word, reduce the penalty.
-        if kind == "missing" and not is_vowel and (idx >= n_results - 2):
-            weight = 0.25  # End consonants deletions do not destroy the score.
-            
-        total_pr_weight += weight
-        
+
+        # Reduce weight for ending missing consonants (very common in natural speech)
+        if kind == "missing" and not is_vowel and idx >= n - 2:
+            weight = 0.3
+
+        # Reduce weight for extra sounds (often schwa insertions in Indian English)
+        if kind == "extra":
+            weight = 0.4
+
+        total_weight += weight
+
         if kind == "correct":
-            earned_pr += weight
+            earned += weight * 1.0
         elif kind == "accent_match":
-            earned_pr += weight * 0.96  # Acceptable Indian accent variation
+            earned += weight * 1.0   # Full credit for accepted accent variants
         elif kind == "close":
-            earned_pr += weight * 0.78  # Close sound
+            earned += weight * 0.65
         elif kind == "wrong":
-            earned_pr += weight * 0.20  # Incorrect sound
-            
-    pr_score = (earned_pr / max(0.1, total_pr_weight)) * 100
+            earned += weight * 0.15
+        # missing and extra earn 0
 
-    # 2. Vowel Accuracy & 3. Consonant Accuracy
-    total_v_weight = 0.0
-    earned_v = 0.0
-    total_c_weight = 0.0
-    earned_c = 0.0
+    if total_weight == 0:
+        return 0
 
-    for idx, item in enumerate(results):
-        kind = item["type"]
-        is_vowel = item.get("sound_group") == "vowel"
-        
-        if is_vowel:
-            total_v_weight += 1.0
-            if kind == "correct":
-                earned_v += 1.0
-            elif kind == "accent_match":
-                earned_v += 0.96
-            elif kind == "close":
-                earned_v += 0.75
-            elif kind == "wrong":
-                earned_v += 0.15
-        else:
-            weight = 1.0
-            if kind == "missing" and (idx >= n_results - 2):
-                weight = 0.25
-            total_c_weight += weight
-            if kind == "correct":
-                earned_c += weight
-            elif kind == "accent_match":
-                earned_c += 0.96
-            elif kind == "close":
-                earned_c += 0.75
-            elif kind == "wrong":
-                earned_c += 0.15
+    raw = (earned / total_weight) * 100
+    return min(100, max(0, round(raw)))
 
-    v_score = (earned_v / max(1.0, total_v_weight)) * 100 if total_v_weight > 0 else 100.0
-    c_score = (earned_c / max(1.0, total_c_weight)) * 100 if total_c_weight > 0 else 100.0
-
-    # 4. Stress Score (estimated based on vowel accuracy)
-    stress_score = v_score
-
-    # 5. Fluency Score (penalized by deletions/insertions/hesitations)
-    n_deletions = sum(1 for item in results if item["type"] == "missing")
-    n_insertions = sum(1 for item in results if item["type"] == "extra")
-    fluency_penalty = (n_deletions * 6.5) + (n_insertions * 5.0)
-    fluency_score = max(40.0, 100.0 - fluency_penalty)
-
-    # Weighted Overall Score
-    overall_score = (
-        (pr_score * 0.40) +
-        (v_score * 0.20) +
-        (c_score * 0.20) +
-        (stress_score * 0.10) +
-        (fluency_score * 0.10)
-    )
-
-    return min(100, max(0, round(overall_score)))
 
 def score_breakdown(results):
     buckets = {

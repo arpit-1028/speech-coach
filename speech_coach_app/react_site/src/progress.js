@@ -66,7 +66,8 @@ export function saveAttempt(progress, level, score, userId = 'guest', analysis =
 }
 
 export function isUnlocked(level, progress) {
-  if (level.id === 1) return true;
+  // All Word Practice levels (id 1-12) are always unlocked
+  if (level.id <= 12) return true;
   const previous = progress.completed[level.id - 1];
   return previous?.bestScore >= 75;
 }

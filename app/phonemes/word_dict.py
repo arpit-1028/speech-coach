@@ -1,5 +1,9 @@
+# Manual pronunciation overrides in IPA.
+# These take priority over CMU dictionary lookups.
+# Each word maps to a list of IPA phonemes.
+# Multiple variants can be specified as a list of lists.
+
 WORD_DICT = {
-    # This dictionary is now empty! 
-    # The backend handles infinite words and sentences dynamically via the CMU Dictionary.
-    # You can add manual overrides here if you ever find a word that CMU doesn't score the way you like.
+    # Words where CMU dict may not match Indian English expectations
+    # or where we want to ensure specific accepted pronunciations
 }
