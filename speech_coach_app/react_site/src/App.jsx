@@ -675,15 +675,16 @@ function LiveCoach({ status, seconds, levelType }) {
 }
 
 function ResultScreen({ result, activeLevel, onRetry, onMap }) {
-  const currentScore = result.overall_score || result.score || 0;
+  const data = result.pronunciation || result || {};
+  const currentScore = data.overall_score || data.score || result.score || 0;
   const radius = 66;
   const strokeDasharray = 2 * Math.PI * radius;
   const strokeDashoffset = strokeDasharray * (1 - currentScore / 100);
 
   // Group wrong/close/missing/extra elements from alignment
-  const wrongItems = result.sound_level_comparison?.filter(item => item.type === "wrong" || item.type === "close") || [];
-  const missingItems = result.sound_level_comparison?.filter(item => item.type === "missing") || [];
-  const extraItems = result.sound_level_comparison?.filter(item => item.type === "extra") || [];
+  const wrongItems = data.sound_level_comparison?.filter(item => item.type === "wrong" || item.type === "close") || [];
+  const missingItems = data.sound_level_comparison?.filter(item => item.type === "missing") || [];
+  const extraItems = data.sound_level_comparison?.filter(item => item.type === "extra") || [];
 
   return (
     <div className="result-panel">
@@ -729,13 +730,13 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
       </div>
 
       {/* Phoneme Breakdown Section */}
-      {result.sound_level_comparison?.length > 0 && (
+      {data.sound_level_comparison?.length > 0 && (
         <div className="result-section">
           <h2 className="section-title">
             <span className="section-title-icon">🔤</span> PHONEME BREAKDOWN
           </h2>
           <div className="phoneme-breakdown-grid">
-            {result.sound_level_comparison.map((item, index) => {
+            {data.sound_level_comparison.map((item, index) => {
               let cardClass = "";
               let icon = "";
               let midVal = "";
@@ -781,14 +782,14 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
           {/* Main Coach Feedback Alert */}
           <div className="feedback-alert-card feedback-alert-card--info">
             <span className="feedback-alert-icon">ℹ️</span>
-            <p>{result.ai_summary || (result.passed ? "Excellent! All sounds matched target parameters." : "Fair attempt. Keep practicing the highlighted sounds.")}</p>
+            <p>{data.ai_summary || (result.passed ? "Excellent! All sounds matched target parameters." : "Fair attempt. Keep practicing the highlighted sounds.")}</p>
           </div>
 
           {/* Audio Quality warnings */}
-          {result.audio_quality_warning && (
+          {data.audio_quality_warning && (
             <div className="feedback-alert-card feedback-alert-card--warning">
               <span className="feedback-alert-icon">⚠️</span>
-              <p>{result.audio_quality_warning}</p>
+              <p>{data.audio_quality_warning}</p>
             </div>
           )}
 

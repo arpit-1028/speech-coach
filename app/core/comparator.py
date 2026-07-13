@@ -1,89 +1,73 @@
 from difflib import SequenceMatcher
 
-VOWELS = {"a", "e", "i", "o", "u", "ai", "au", "oi", "ee", "oo", "aw", "er",
-          "\u026A", "i\u02D0", "\u025B", "\u00E6", "\u0251\u02D0", "\u028C", "\u0254\u02D0",
-          "\u028A", "u\u02D0", "\u0259", "e\u026A", "o\u028A", "a\u026A", "a\u028A",
-          "\u0254\u026A", "\u025C\u02D0r", "\u025C\u02D0", "i", "u", "a", "e", "o",
-          "\u0259\u028A", "\u025A"}
-
-# Pairs that are equivalent in Indian English (full credit)
-ACCENT_ACCEPTED = {
-    # TH sounds
-    ("\u03B8", "t"), ("t", "\u03B8"),
-    ("\u00F0", "d"), ("d", "\u00F0"),
-    ("\u03B8", "\u03B8"), ("\u00F0", "\u00F0"),
-    # V/W confusion
-    ("v", "w"), ("w", "v"),
-    # R variants
-    ("\u0279", "r"), ("r", "\u0279"),
-    ("\u027E", "r"), ("r", "\u027E"),
-    ("\u027E", "\u0279"), ("\u0279", "\u027E"),
-    # Retroflex (Indian English)
-    ("d", "\u0256"), ("\u0256", "d"),
-    ("t", "\u0288"), ("\u0288", "t"),
-    # Schwa variations
-    ("\u0259", "\u028C"), ("\u028C", "\u0259"),
-    ("\u0259", "\u0251\u02D0"), ("\u0251\u02D0", "\u0259"),
-    ("\u0259", "a"), ("a", "\u0259"),
-    ("\u028C", "a"), ("a", "\u028C"),
-    ("\u028C", "\u0251\u02D0"), ("\u0251\u02D0", "\u028C"),
-    # Vowel length (Indian English often neutralizes length)
-    ("\u026A", "i\u02D0"), ("i\u02D0", "\u026A"),
-    ("\u028A", "u\u02D0"), ("u\u02D0", "\u028A"),
-    ("i", "i\u02D0"), ("i\u02D0", "i"),
-    ("u", "u\u02D0"), ("u\u02D0", "u"),
-    ("i", "\u026A"), ("\u026A", "i"),
-    ("u", "\u028A"), ("\u028A", "u"),
-    ("\u0254\u02D0", "o"), ("o", "\u0254\u02D0"),
+# Vowel set normalized to lowercase \u026a and \u028a.
+VOWELS = {
+    "a", "e", "i", "o", "u", "ai", "au", "oi", "ee", "oo", "aw", "er",
+    "\u026a", "i\u02d0", "\u025b", "\u00e6", "\u0251\u02d0", "\u028c", "\u0254\u02d0",
+    "\u028a", "u\u02d0", "\u0259", "e\u026a", "o\u028a", "a\u026a", "a\u028a",
+    "\u0254\u026a", "\u0259\u028a", "\u025a", "i", "u", "o", "a", "e"
 }
 
-# Pairs that are acoustically close (partial credit ~65%)
+# Indian English equivalent variants (receive full credit)
+ACCENT_ACCEPTED = {
+    # TH replacements
+    ("\u03b8", "t"), ("t", "\u03b8"),
+    ("\u00f0", "d"), ("d", "\u00f0"),
+    # V/W confusion
+    ("v", "w"), ("w", "v"),
+    # Retroflex / alveolar stops
+    ("d", "\u0256"), ("\u0256", "d"),
+    ("t", "\u0288"), ("\u0288", "t"),
+    # Liquids
+    ("\u0279", "r"), ("r", "\u0279"),
+    ("\u027e", "r"), ("r", "\u027e"),
+    # Schwa adjustments
+    ("\u0259", "\u028c"), ("\u028c", "\u0259"),
+    ("\u0259", "\u0251\u02d0"), ("\u0251\u02d0", "\u0259"),
+    ("\u0259", "a"), ("a", "\u0259"),
+    ("\u028c", "a"), ("a", "\u028c"),
+    ("\u028c", "\u0251\u02d0"), ("\u0251\u02d0", "\u028c"),
+    # Length neutralization
+    ("\u026a", "i\u02d0"), ("i\u02d0", "\u026a"),
+    ("\u028a", "u\u02d0"), ("u\u02d0", "\u028a"),
+    ("i", "i\u02d0"), ("i\u02d0", "i"),
+    ("u", "u\u02d0"), ("u\u02d0", "u"),
+    ("\u0254\u02d0", "o"), ("o", "\u0254\u02d0"),
+}
+
+# Acoustically close pairs (receive partial credit 65%)
 SIMILAR = {
-    # Stop voicing
     ("t", "d"), ("d", "t"),
     ("p", "b"), ("b", "p"),
     ("k", "g"), ("g", "k"),
-    # Fricative voicing
     ("f", "v"), ("v", "f"),
     ("s", "z"), ("z", "s"),
     ("\u0283", "\u0292"), ("\u0292", "\u0283"),
-    # Fricative place
     ("s", "\u0283"), ("\u0283", "s"),
     ("z", "\u0292"), ("\u0292", "z"),
-    ("f", "\u03B8"), ("\u03B8", "f"),
-    ("\u03B8", "s"), ("s", "\u03B8"),
-    ("\u00F0", "z"), ("z", "\u00F0"),
-    # Affricate/fricative
+    ("f", "\u03b8"), ("\u03b8", "f"),
+    ("\u03b8", "s"), ("s", "\u03b8"),
+    ("\u00f0", "z"), ("z", "\u00f0"),
     ("t\u0283", "\u0283"), ("\u0283", "t\u0283"),
     ("d\u0292", "\u0292"), ("\u0292", "d\u0292"),
     ("t\u0283", "t"), ("t", "t\u0283"),
     ("d\u0292", "d"), ("d", "d\u0292"),
-    # Nasal place
-    ("n", "\u014B"), ("\u014B", "n"),
+    ("n", "\u014b"), ("\u014b", "n"),
     ("m", "n"), ("n", "m"),
-    ("m", "\u014B"), ("\u014B", "m"),
-    # Liquid
     ("r", "l"), ("l", "r"),
-    # Vowel neighbors
-    ("\u00E6", "\u025B"), ("\u025B", "\u00E6"),
-    ("\u00E6", "a"), ("a", "\u00E6"),
-    ("\u025B", "e"), ("e", "\u025B"),
-    ("e\u026A", "\u025B"), ("\u025B", "e\u026A"),
-    ("o\u028A", "\u0254\u02D0"), ("\u0254\u02D0", "o\u028A"),
-    ("o\u028A", "o"), ("o", "o\u028A"),
-    ("e\u026A", "e"), ("e", "e\u026A"),
-    # Glide/vowel
-    ("w", "u"), ("u", "w"),
-    ("j", "i"), ("i", "j"),
-    # H-dropping (common)
+    ("\u00e6", "\u025b"), ("\u025b", "\u00e6"),
+    ("\u00e6", "a"), ("a", "\u00e6"),
+    ("e\u026a", "\u025b"), ("\u025b", "e\u026a"),
+    ("o\u028a", "\u0254\u02d0"), ("\u0254\u02d0", "o\u028a"),
+    ("o\u028a", "o"), ("o", "o\u028a"),
+    ("e\u026a", "e"), ("e", "e\u026a"),
     ("h", ""),
 }
 
-
 def compare(expected, spoken, accent="indian"):
     """
-    Compare expected and spoken phoneme lists using SequenceMatcher alignment.
-    Classify each aligned pair into: correct, accent_match, close, wrong, missing, extra.
+    Compares two lists of IPA tokens using SequenceMatcher.
+    Returns results mapping types: correct, accent_match, close, wrong, missing, extra.
     """
     results = []
     matcher = SequenceMatcher(None, expected, spoken)
@@ -109,25 +93,18 @@ def compare(expected, spoken, accent="indian"):
 
     return results
 
-
 def _classify(expected, spoken, accent):
     if expected and spoken and expected == spoken:
         return _item("correct", expected, spoken)
-
     if expected and spoken and _is_accent_match(expected, spoken, accent):
         return _item("accent_match", expected, spoken)
-
     if expected and spoken and _is_similar(expected, spoken):
         return _item("close", expected, spoken)
-
     if expected and spoken:
         return _item("wrong", expected, spoken)
-
     if expected:
         return _item("missing", expected, None)
-
     return _item("extra", None, spoken)
-
 
 def _item(kind, expected, spoken):
     sound = expected or spoken or ""
@@ -139,16 +116,13 @@ def _item(kind, expected, spoken):
         "tip": _tip(kind, expected, spoken),
     }
 
-
 def _is_similar(left, right):
     return (left, right) in SIMILAR or (right, left) in SIMILAR
-
 
 def _is_accent_match(expected, spoken, accent):
     if accent not in {"indian", "auto"}:
         return False
     return (expected, spoken) in ACCENT_ACCEPTED or (spoken, expected) in ACCENT_ACCEPTED
-
 
 def _tip(kind, expected, spoken):
     if kind == "correct":
