@@ -1,3 +1,4 @@
+// Speech Coach Premium Gamified Interface
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   API_BASE, 
