@@ -779,6 +779,34 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
           <span className="section-title-icon">💬</span> FEEDBACK & CORRECTIONS
         </h2>
         <div className="feedback-alerts-container">
+
+          {/* What Whisper heard — shows AI speech recognition result */}
+          {data.whisper_heard && (
+            <div className="feedback-alert-card feedback-alert-card--heard" style={{
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              marginBottom: '0.5rem'
+            }}>
+              <span className="feedback-alert-icon">🎙️</span>
+              <p style={{ margin: 0 }}>
+                <strong>AI heard you say:</strong>{" "}
+                <span style={{
+                  fontFamily: 'monospace',
+                  fontSize: '1.05rem',
+                  color: data.whisper_heard.toLowerCase().trim() === activeLevel?.target?.toLowerCase().trim()
+                    ? '#10b981'
+                    : '#f59e0b'
+                }}>
+                  "{data.whisper_heard}"
+                </span>
+                {data.whisper_heard.toLowerCase().trim() === activeLevel?.target?.toLowerCase().trim()
+                  ? <span style={{ color: '#10b981', marginLeft: '0.5rem' }}>✓ Correct word!</span>
+                  : <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>— Target: "{activeLevel?.target}"</span>
+                }
+              </p>
+            </div>
+          )}
+
           {/* Main Coach Feedback Alert */}
           <div className="feedback-alert-card feedback-alert-card--info">
             <span className="feedback-alert-icon">ℹ️</span>

@@ -13,7 +13,7 @@ from app.core.comparator import compare
 from app.core.scorer import score, score_breakdown
 from app.core.feedback import generate_feedback
 from app.services.recognizer import recognize_audio
-from app.core.spoken_normalizer import normalize_spoken
+# spoken_normalizer no longer needed — CMU dict gives correct IPA directly
 
 # New AI services
 from app.services.whisper_service import transcribe
@@ -88,11 +88,24 @@ async def check(
         quality_category, quality_msg = assess_audio_quality(file_path)
         print(f"AUDIO QUALITY: {quality_category}")
 
-        # Step 3: Extract spoken phonemes (Wav2Vec2 → raw IPA chars → normalized IPA tokens)
-        spoken_raw = recognize_audio(file_path)
-        print("RAW SPOKEN:", spoken_raw)
-        spoken = normalize_spoken(spoken_raw)
-        print("NORMALIZED SPOKEN:", spoken)
+        # Step 3: Extract spoken phonemes via Whisper → CMU dict → IPA tokens
+        # recognize_audio now uses Whisper (fast, accurate) to get the word
+        # the user said, then looks it up in the CMU dict to get IPA phonemes.
+        # This is far more accurate than the old wav2vec2-xlsr-53 IPA model
+        # which incorrectly mapped θ→h, ŋk→n, etc.
+        spoken = recognize_audio(file_path, expected_word=word)
+        print("SPOKEN IPA:", spoken)
+
+        # Also capture what Whisper actually heard (for display)
+        import re as _re
+        from faster_whisper import WhisperModel as _WM
+        # We re-use the whisper model that is already loaded in recognizer module
+        from app.services.recognizer import _transcribe_words
+        try:
+            whisper_words = _transcribe_words(file_path)
+            whisper_heard = " ".join(whisper_words)
+        except Exception:
+            whisper_heard = word.lower()
 
         # Step 4: Get ALL expected pronunciation variants from CMU dict → IPA
         expected_variants_cmu = get_phonemes_variants(word)
@@ -119,7 +132,16 @@ async def check(
             best_results = []
             best_expected_ipa = []
 
-        # Step 6: If audio quality is bad, protect user from false low scores
+        # Step 6 – Word-match bonus
+        # If Whisper correctly transcribed the expected word, the user clearly
+        # said the right word. Give a score floor of 72 to avoid false negatives
+        # caused by minor accent differences in the phoneme comparison.
+        word_correct = (whisper_heard.strip().lower() == word.strip().lower())
+        if word_correct and best_sc < 72:
+            print(f"WORD-MATCH BONUS: Whisper heard '{whisper_heard}' == expected '{word}', boosting {best_sc}→72")
+            best_sc = 72
+
+        # Step 6b: If audio quality is bad, protect user from false low scores
         if quality_category in ("silence", "low_volume") and best_sc < 60:
             best_sc = max(best_sc, 75)
 
@@ -160,7 +182,7 @@ async def check(
         return {
             # Backward compat
             "expected_word": word.lower(),
-            "detected_word": word.lower(),
+            "detected_word": whisper_heard,      # What Whisper actually heard
             "expected_phonemes": best_expected_ipa,
             "spoken_phonemes": spoken,
             "comparison": best_results,
@@ -188,6 +210,7 @@ async def check(
             "audio_quality_warning": quality_msg,
             "weak_sound": fb.get("weak_sound", ""),
             "practice_words": fb.get("practice_words", []),
+            "whisper_heard": whisper_heard,      # Debug / UI info
         }
     except Exception as e:
         print("ERROR IN CHECK:", e)

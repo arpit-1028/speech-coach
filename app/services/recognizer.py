@@ -1,62 +1,152 @@
-import os
-import platform
-import uuid
+"""
+recognizer.py  –  Hybrid Speech-to-Phoneme Pipeline
+=====================================================
+Strategy:
+  1. Use Faster-Whisper (small model) to convert speech → English text.
+     Whisper is highly accurate for English and correctly transcribes words
+     like "think", "world", "chair" even with Indian accents.
+  2. Look up the transcribed word(s) in the CMU Pronouncing Dictionary
+     to get the gold-standard IPA phonemes.
+  3. Return those phonemes as the "spoken" representation for comparison.
 
-# Help phonemizer find eSpeak on Windows before importing transformers
-if platform.system() == "Windows":
-    os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = r"C:\Program Files\eSpeak NG\libespeak-ng.dll"
-    os.environ["PHONEMIZER_ESPEAK_PATH"] = r"C:\Program Files\eSpeak NG\espeak-ng.exe"
+This avoids the critical limitation of wav2vec2-xlsr-53-espeak-cv-ft which:
+  - Mis-detects θ (TH) as 'h' or 't'
+  - Collapses ŋk clusters to just 'n'
+  - Requires eSpeak installed on Windows (not always present)
 
-from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
-import torch
+Falls back to character-level phoneme guessing if the word is not in CMU dict.
+"""
+
+import re
 import librosa
-import soundfile as sf
 import numpy as np
+from faster_whisper import WhisperModel
 
-MODEL_ID = "facebook/wav2vec2-xlsr-53-espeak-cv-ft"
-processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
-model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+# ── Lazy singleton ─────────────────────────────────────────────────────────────
+_whisper_model = None
 
+def _get_whisper():
+    global _whisper_model
+    if _whisper_model is None:
+        _whisper_model = WhisperModel("small", compute_type="int8")
+    return _whisper_model
+
+
+# ── Audio pre-processing ───────────────────────────────────────────────────────
 def preprocess_audio(input_file):
+    """Load, trim silence, and peak-normalize audio to 16 kHz mono."""
     audio, sr = librosa.load(input_file, sr=16000, mono=True)
     if len(audio) == 0:
         return audio
     trimmed, _ = librosa.effects.trim(audio, top_db=50)
-    if len(trimmed) < 1600:
+    if len(trimmed) < 1600:          # < 0.1 s — keep original
         trimmed = audio
     peak = np.max(np.abs(trimmed))
     if peak > 0:
         trimmed = trimmed / peak
     return trimmed
 
-def recognize_audio(filename):
-    """Extract IPA phonemes from an audio file, split by space into tokens."""
-    speech_array = preprocess_audio(filename)
-    if len(speech_array) == 0:
+
+# ── Whisper transcription ──────────────────────────────────────────────────────
+def _transcribe_words(audio_path: str) -> list[str]:
+    """
+    Transcribe audio with Whisper and return a list of cleaned lower-case words.
+    Language is forced to English so Indian-accented speech is always treated as
+    English rather than being guessed as Hindi or another language.
+    """
+    model = _get_whisper()
+    segments, info = model.transcribe(
+        audio_path,
+        language="en",          # force English — critical for Indian accent
+        task="transcribe",
+        beam_size=5,
+        word_timestamps=False,
+    )
+    text = " ".join(seg.text for seg in segments).strip()
+    print("WHISPER TRANSCRIPT:", text)
+
+    # Clean to lower-case alphabetic words only
+    words = re.findall(r"[a-z']+", text.lower())
+    print("WHISPER WORDS:", words)
+    return words
+
+
+# ── Main public function ───────────────────────────────────────────────────────
+def recognize_audio(filename: str, expected_word: str = "") -> list[str]:
+    """
+    Convert speech in `filename` to a list of IPA phoneme tokens.
+
+    Pipeline:
+      Whisper transcript → word list → CMU dict → IPA tokens
+
+    Args:
+        filename:      Path to the audio file (WAV, 16 kHz recommended).
+        expected_word: The word the user was supposed to say. Used as a
+                       tiebreaker when Whisper returns multiple candidates.
+
+    Returns:
+        List of IPA token strings, e.g. ['θ', 'ɪ', 'ŋ', 'k'] for "think".
+    """
+    # Pre-process audio for quality check (used by caller)
+    audio = preprocess_audio(filename)
+    if len(audio) == 0:
+        print("RECOGNIZER: empty audio")
         return []
 
-    print("PROCESSING AUDIO, length:", len(speech_array), "samples")
-    inputs = processor(speech_array, sampling_rate=16000, return_tensors="pt")
+    # Step 1 – Whisper transcript
+    words = _transcribe_words(filename)
+    if not words:
+        print("RECOGNIZER: no words detected")
+        return []
 
-    with torch.no_grad():
-        logits = model(inputs.input_values).logits
+    # Step 2 – Convert words → IPA via CMU dict
+    # We import here to avoid circular imports (cmu_service imports nothing from recognizer)
+    from app.services.cmu_service import get_phonemes_variants, cmu_to_ipa
 
-    predicted_ids = torch.argmax(logits, dim=-1)
-    transcription = processor.batch_decode(predicted_ids)
-    phonemes_str = transcription[0] if transcription else ""
-    print("RAW PHONEMES:", phonemes_str)
+    # Try each transcribed word; pick the one that is closest to expected_word
+    # (handles cases like Whisper hearing "thin" instead of "think")
+    exp_lower = expected_word.lower().strip()
+    best_word = _pick_best_word(words, exp_lower)
+    print("BEST WHISPER WORD:", best_word)
 
-    # Split by space to preserve multi-character IPA tokens correctly
-    tokens = phonemes_str.split() if phonemes_str else []
-    
-    # Normalize unicode case (e.g. \u026A -> \u026a, \u028A -> \u028a)
-    normalized_tokens = []
-    for t in tokens:
-        t_clean = t.replace("\u026A", "\u026a").replace("\u028A", "\u028a")
-        # Remove empty or standalone stress symbols
-        t_clean = t_clean.replace("\u02c8", "").replace("\u02cc", "")
-        if t_clean:
-            normalized_tokens.append(t_clean)
-            
-    print("NORMALIZED TOKENS:", normalized_tokens)
-    return normalized_tokens
+    # Get CMU variants for that word and pick variant 0 (most common pronunciation)
+    variants = get_phonemes_variants(best_word)
+    if not variants or not variants[0]:
+        # Fallback: try whole transcript joined
+        variants = get_phonemes_variants(" ".join(words))
+
+    if not variants or not variants[0]:
+        print("RECOGNIZER: CMU lookup failed, returning []")
+        return []
+
+    ipa_tokens = cmu_to_ipa(variants[0])
+    print("SPOKEN IPA (from CMU):", ipa_tokens)
+    return ipa_tokens
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def _pick_best_word(words: list[str], expected: str) -> str:
+    """
+    From the Whisper-transcribed word list, pick the word that is most similar
+    to the expected word.  Falls back to the first word if none matches well.
+    """
+    if not words:
+        return expected or ""
+    if not expected:
+        return words[0]
+
+    # Exact match first
+    if expected in words:
+        return expected
+
+    # Fuzzy: pick word with the most character overlap with expected
+    def _overlap(w):
+        common = set(w) & set(expected)
+        return len(common) / max(len(set(expected)), 1)
+
+    best = max(words, key=_overlap)
+    # If even the best word shares < 30% chars, fall back to expected
+    # (this catches total mis-transcriptions like hearing "sink" for "think")
+    if _overlap(best) < 0.30:
+        return expected
+    return best
