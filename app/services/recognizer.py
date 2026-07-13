@@ -48,19 +48,28 @@ def preprocess_audio(input_file):
 
 
 # ── Whisper transcription ──────────────────────────────────────────────────────
-def _transcribe_words(audio_path: str) -> list[str]:
+def _transcribe_words(audio_path: str, hint_word: str = "") -> list[str]:
     """
     Transcribe audio with Whisper and return a list of cleaned lower-case words.
     Language is forced to English so Indian-accented speech is always treated as
     English rather than being guessed as Hindi or another language.
+
+    Key settings that prevent hallucination:
+    - condition_on_previous_text=False : each segment is independent; prevents
+      Whisper from chaining random text when audio is unclear.
+    - no_speech_threshold=0.65 : segments with high no-speech probability are
+      silently dropped instead of hallucinated into random sentences.
     """
     model = _get_whisper()
     segments, info = model.transcribe(
         audio_path,
-        language="en",          # force English — critical for Indian accent
+        language="en",                    # force English
         task="transcribe",
         beam_size=5,
         word_timestamps=False,
+        condition_on_previous_text=False, # prevents hallucination chains
+        no_speech_threshold=0.65,         # drop silent/noise segments
+        temperature=0.0,                  # greedy decode — less creative
     )
     text = " ".join(seg.text for seg in segments).strip()
     print("WHISPER TRANSCRIPT:", text)
@@ -68,6 +77,19 @@ def _transcribe_words(audio_path: str) -> list[str]:
     # Clean to lower-case alphabetic words only
     words = re.findall(r"[a-z']+", text.lower())
     print("WHISPER WORDS:", words)
+
+    # ── Length guard ────────────────────────────────────────────────────────
+    # Single-word pronunciation exercises should produce 1-3 words at most.
+    # If Whisper returns a long sentence (hallucination), reduce to the
+    # most relevant words only.
+    if hint_word and len(words) > 4:
+        print(f"WHISPER LENGTH GUARD: {len(words)} words → filtering to best match for '{hint_word}'")
+        # Keep only words with at least one character in common with hint_word
+        hint_chars = set(hint_word.lower())
+        filtered = [w for w in words if set(w) & hint_chars]
+        words = filtered[:3] if filtered else words[:2]
+        print("WHISPER FILTERED WORDS:", words)
+
     return words
 
 
@@ -93,8 +115,8 @@ def recognize_audio(filename: str, expected_word: str = "") -> list[str]:
         print("RECOGNIZER: empty audio")
         return []
 
-    # Step 1 – Whisper transcript
-    words = _transcribe_words(filename)
+    # Step 1 – Whisper transcript (pass hint so length guard can filter garbage)
+    words = _transcribe_words(filename, hint_word=expected_word)
     if not words:
         print("RECOGNIZER: no words detected")
         return []

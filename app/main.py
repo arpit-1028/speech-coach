@@ -96,13 +96,10 @@ async def check(
         spoken = recognize_audio(file_path, expected_word=word)
         print("SPOKEN IPA:", spoken)
 
-        # Also capture what Whisper actually heard (for display)
-        import re as _re
-        from faster_whisper import WhisperModel as _WM
-        # We re-use the whisper model that is already loaded in recognizer module
+        # Also capture what Whisper actually heard (for word-match bonus check)
         from app.services.recognizer import _transcribe_words
         try:
-            whisper_words = _transcribe_words(file_path)
+            whisper_words = _transcribe_words(file_path, hint_word=word)
             whisper_heard = " ".join(whisper_words)
         except Exception:
             whisper_heard = word.lower()
