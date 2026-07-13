@@ -128,10 +128,12 @@ def recognize_audio(filename: str, expected_word: str = "") -> list[str]:
 def _pick_best_word(words: list[str], expected: str) -> str:
     """
     From the Whisper-transcribed word list, pick the word that is most similar
-    to the expected word.  Falls back to the first word if none matches well.
+    to the expected word. Always returns what Whisper actually heard — never
+    falls back to the expected word, because doing so would auto-correct wrong
+    pronunciations and give dishonest 100% scores.
     """
     if not words:
-        return expected or ""
+        return ""
     if not expected:
         return words[0]
 
@@ -139,14 +141,11 @@ def _pick_best_word(words: list[str], expected: str) -> str:
     if expected in words:
         return expected
 
-    # Fuzzy: pick word with the most character overlap with expected
+    # Fuzzy: pick the Whisper word with the most character overlap with expected
     def _overlap(w):
         common = set(w) & set(expected)
         return len(common) / max(len(set(expected)), 1)
 
-    best = max(words, key=_overlap)
-    # If even the best word shares < 30% chars, fall back to expected
-    # (this catches total mis-transcriptions like hearing "sink" for "think")
-    if _overlap(best) < 0.30:
-        return expected
-    return best
+    # Always return the best matching word — even if overlap is low.
+    # This ensures "bye" stays "bye" (not auto-corrected to "cat").
+    return max(words, key=_overlap)
