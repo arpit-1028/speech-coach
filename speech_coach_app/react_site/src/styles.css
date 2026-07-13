@@ -916,68 +916,240 @@ main {
   gap: 1.8rem;
 }
 
-.score-layout {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  background: rgba(255, 255, 255, 0.02);
-  padding: 1.5rem;
-  border-radius: 18px;
-  border: 1px solid var(--border-glass);
+/* SVG Circular progress layout */
+.score-circle-container {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  margin: 0.5rem auto;
 }
 
-.score-layout h1 {
-  font-size: 1.4rem;
+.score-ring-bg {
+  stroke: rgba(255, 255, 255, 0.04);
+}
+
+.score-ring-fill {
+  transition: stroke-dashoffset 0.8s ease-out;
+}
+
+.score-circle-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-circle-text strong {
+  font-size: 2.8rem;
   font-weight: 800;
   color: #fff;
+  line-height: 1;
 }
 
-.score-layout p {
-  font-size: 0.88rem;
+.score-circle-text span {
+  font-size: 0.72rem;
   color: #94a3b8;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
   margin-top: 0.2rem;
 }
 
-.mistake-panel {
+.score-badge-container {
+  text-align: center;
+  margin-top: 0.5rem;
+}
+
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.4rem;
+  border-radius: 20px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.score-badge--passed {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #10b981;
+}
+
+.score-badge--retry {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+}
+
+/* Result Sections */
+.result-section {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.6rem;
 }
 
-.mistake-panel h2 {
-  font-size: 1.15rem;
-  font-weight: 700;
+.section-title {
+  font-size: 0.95rem;
+  font-weight: 800;
   color: #fff;
+  letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
 }
 
-.mistake-panel article {
+.section-title-icon {
+  font-size: 1.1rem;
+}
+
+/* Phoneme Cards Grid */
+.phoneme-breakdown-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem;
+  background: rgba(255, 255, 255, 0.01);
+  padding: 1.2rem;
+  border-radius: 16px;
+  border: 1px solid var(--border-glass);
+}
+
+.phoneme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 84px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-family: var(--font-family);
+  font-weight: 700;
+  transition: var(--trans-smooth);
+}
+
+.phoneme-card-icon {
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.phoneme-card-expected {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.phoneme-card-spoken {
+  font-size: 0.9rem;
+  font-weight: 700;
+  opacity: 0.8;
+  margin-top: 1px;
+}
+
+.phoneme-card--correct {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.phoneme-card--wrong {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.phoneme-card--missing {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.phoneme-card--extra {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #a855f7;
+}
+
+/* Feedback Alerts */
+.feedback-alerts-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.feedback-alert-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  text-align: left;
+}
+
+.feedback-alert-card--info {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.2);
+  color: #60a5fa;
+}
+
+.feedback-alert-card--warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.feedback-alert-icon {
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.feedback-alert-card p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* How to improve cards */
+.how-to-improve-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.improve-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border-glass);
-  border-radius: 12px;
-  padding: 1rem;
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 0.5rem;
-}
-
-.mistake-panel article strong {
-  color: var(--color-rose);
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  font-weight: 800;
-}
-
-.mistake-panel article span {
   color: #cbd5e1;
-  font-size: 0.88rem;
-  font-weight: 600;
+  text-align: left;
 }
 
-.mistake-panel article p {
-  grid-column: 1 / -1;
-  color: #94a3b8;
-  font-size: 0.82rem;
-  margin-top: 0.3rem;
+.improve-icon {
+  font-size: 1.1rem;
+  line-height: 1.3;
+  color: #f59e0b;
+}
+
+.improve-card p {
+  margin: 0;
+  line-height: 1.4;
 }
 
 /* Coach Tools Tabs layout */

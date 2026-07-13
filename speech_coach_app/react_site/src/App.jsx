@@ -674,74 +674,192 @@ function LiveCoach({ status, seconds, levelType }) {
 }
 
 function ResultScreen({ result, activeLevel, onRetry, onMap }) {
-  const breakdown = result.pronunciation?.score_breakdown || {};
+  const currentScore = result.overall_score || result.score || 0;
+  const radius = 66;
+  const strokeDasharray = 2 * Math.PI * radius;
+  const strokeDashoffset = strokeDasharray * (1 - currentScore / 100);
+
+  // Group wrong/close/missing/extra elements from alignment
+  const wrongItems = result.sound_level_comparison?.filter(item => item.type === "wrong" || item.type === "close") || [];
+  const missingItems = result.sound_level_comparison?.filter(item => item.type === "missing") || [];
+  const extraItems = result.sound_level_comparison?.filter(item => item.type === "extra") || [];
+
   return (
     <div className="result-panel">
-      <p className="eyebrow">Instant Analysis</p>
-      
-      <div className="score-layout">
-        <div className={`score-orb ${result.passed ? 'score-orb--pass' : 'score-orb--retry'}`}>
-          <strong>{result.overall_score || result.score}</strong>
-          <span>Score</span>
-        </div>
-        <div>
-          <h1>{result.passed ? 'Challenge Passed!' : 'Need Practice'}</h1>
-          <p>{result.passed ? `Fabulous! You unlocked ${result.xpEarned || 20} XP.` : 'Try reading slower, enunciate vowels, and retry.'}</p>
+      {/* SVG Score Circle */}
+      <div className="score-circle-container">
+        <svg className="score-ring" width="160" height="160">
+          <circle
+            className="score-ring-bg"
+            stroke="rgba(255, 255, 255, 0.04)"
+            strokeWidth="10"
+            fill="transparent"
+            r={radius}
+            cx="80"
+            cy="80"
+          />
+          <circle
+            className="score-ring-fill"
+            stroke={result.passed ? "#10b981" : "#f59e0b"}
+            strokeWidth="10"
+            strokeDasharray={strokeDasharray}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            fill="transparent"
+            r={radius}
+            cx="80"
+            cy="80"
+            transform="rotate(-90 80 80)"
+          />
+        </svg>
+        <div className="score-circle-text">
+          <strong>{currentScore}</strong>
+          <span>SCORE</span>
         </div>
       </div>
 
-      <div className="breakdown-grid">
-        <Stat label="Clarity" value={`${result.clarity_score || 0}%`} />
-        <Stat label="Confidence" value={`${result.confidence_score || 0}%`} />
-        <Stat label="Pace / Speed" value={result.speaking_speed || 'normal'} />
-        <Stat label="XP Earned" value={`+${result.xpEarned || 0}`} />
+      {/* Passed/Keep Practicing Badge */}
+      <div className="score-badge-container">
+        {result.passed ? (
+          <span className="score-badge score-badge--passed">🎉 Passed</span>
+        ) : (
+          <span className="score-badge score-badge--retry">💪 Keep Practicing</span>
+        )}
       </div>
 
-      <div className="feedback-list">
-        <strong>Coach Feedback:</strong>
-        <div>• {result.ai_summary || result.pronunciation?.summary}</div>
-        {(result.pronunciation?.feedback || []).map((item) => (
-          <div key={item}>• {item}</div>
-        ))}
-      </div>
-
-      {result.weak_sounds?.length > 0 && (
-        <div className="feedback-list" style={{ background: 'rgba(244, 63, 94, 0.03)', borderColor: 'rgba(244, 63, 94, 0.2)' }}>
-          <strong style={{ color: '#f43f5e' }}>Practice Target Sounds:</strong>
-          <div>{result.weak_sounds.join(' / ')}</div>
-        </div>
-      )}
-
+      {/* Phoneme Breakdown Section */}
       {result.sound_level_comparison?.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <strong>Phonemes Sound Map:</strong>
-          <div className="sound-grid">
-            {result.sound_level_comparison.slice(0, 60).map((item, index) => (
-              <span 
-                className={`sound-pill sound-pill--${item.type}`} 
-                title={item.tip} 
-                key={`${item.expected}-${item.spoken}-${index}`}
-              >
-                {item.spoken || item.expected || '-'}
-              </span>
-            ))}
+        <div className="result-section">
+          <h2 className="section-title">
+            <span className="section-title-icon">🔤</span> PHONEME BREAKDOWN
+          </h2>
+          <div className="phoneme-breakdown-grid">
+            {result.sound_level_comparison.map((item, index) => {
+              let cardClass = "";
+              let icon = "";
+              let midVal = "";
+              let botVal = "";
+
+              if (item.type === "correct" || item.type === "accent_match") {
+                cardClass = "phoneme-card--correct";
+                icon = "✓";
+                midVal = item.expected;
+              } else if (item.type === "wrong" || item.type === "close") {
+                cardClass = "phoneme-card--wrong";
+                icon = "✗";
+                midVal = item.expected;
+                botVal = item.spoken;
+              } else if (item.type === "missing") {
+                cardClass = "phoneme-card--missing";
+                icon = "?";
+                midVal = item.expected;
+              } else if (item.type === "extra") {
+                cardClass = "phoneme-card--extra";
+                icon = "+";
+                midVal = item.spoken;
+              }
+
+              return (
+                <div key={index} className={`phoneme-card ${cardClass}`}>
+                  <span className="phoneme-card-icon">{icon}</span>
+                  <span className="phoneme-card-expected">{midVal || "-"}</span>
+                  {botVal && <span className="phoneme-card-spoken">{botVal}</span>}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {result.detected_mistakes?.length > 0 && (
-        <div className="mistake-panel">
-          <h2>Sound Mistakes Breakdown</h2>
-          {result.detected_mistakes.map((item, index) => (
-            <article key={`${item.expected}-${item.spoken}-${index}`}>
-              <strong style={{ color: '#f43f5e' }}>{item.type.replace('_', ' ')}</strong>
-              <span>Expected "{item.expected || '-'}" / Heard "{item.spoken || '-'}"</span>
-              <p>{item.tip}</p>
-            </article>
-          ))}
-        </div>
-      )}
+      {/* Feedback & Corrections Section */}
+      <div className="result-section">
+        <h2 className="section-title">
+          <span className="section-title-icon">💬</span> FEEDBACK & CORRECTIONS
+        </h2>
+        <div className="feedback-alerts-container">
+          {/* Main Coach Feedback Alert */}
+          <div className="feedback-alert-card feedback-alert-card--info">
+            <span className="feedback-alert-icon">ℹ️</span>
+            <p>{result.ai_summary || (result.passed ? "Excellent! All sounds matched target parameters." : "Fair attempt. Keep practicing the highlighted sounds.")}</p>
+          </div>
 
+          {/* Audio Quality warnings */}
+          {result.audio_quality_warning && (
+            <div className="feedback-alert-card feedback-alert-card--warning">
+              <span className="feedback-alert-icon">⚠️</span>
+              <p>{result.audio_quality_warning}</p>
+            </div>
+          )}
+
+          {/* Dynamic Wrong/Close sounds corrections */}
+          {wrongItems.map((item, idx) => (
+            <div key={idx} className="feedback-alert-card feedback-alert-card--info">
+              <span className="feedback-alert-icon">ℹ️</span>
+              <p>Focus on: "{item.expected}" → you said "{item.spoken}"</p>
+            </div>
+          ))}
+
+          {/* Missing sounds corrections */}
+          {missingItems.length > 0 && (
+            <div className="feedback-alert-card feedback-alert-card--warning">
+              <span className="feedback-alert-icon">⚠️</span>
+              <p>
+                You missed {missingItems.length} sound(s):{" "}
+                {missingItems.map(item => item.expected).join(", ")}
+              </p>
+            </div>
+          )}
+
+          {/* Extra sounds corrections */}
+          {extraItems.length > 0 && (
+            <div className="feedback-alert-card feedback-alert-card--info">
+              <span className="feedback-alert-icon">ℹ️</span>
+              <p>
+                {extraItems.length} extra sound(s) detected — try to be more precise.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* How to Improve Section */}
+      <div className="result-section">
+        <h2 className="section-title">
+          <span className="section-title-icon">🎯</span> HOW TO IMPROVE
+        </h2>
+        <div className="how-to-improve-container">
+          {wrongItems.map((item, idx) => (
+            <div key={idx} className="improve-card">
+              <span className="improve-icon">💡</span>
+              <p>You said "{item.spoken}" — try pronouncing "{item.expected}" more clearly</p>
+            </div>
+          ))}
+
+          {missingItems.map((item, idx) => (
+            <div key={idx} className="improve-card">
+              <span className="improve-icon">💡</span>
+              <p>You missed the "{item.expected}" sound — make sure to include it</p>
+            </div>
+          ))}
+
+          {extraItems.map((item, idx) => (
+            <div key={idx} className="improve-card">
+              <span className="improve-icon">💡</span>
+              <p>Extra "{item.spoken}" sound detected — try to avoid adding it</p>
+            </div>
+          ))}
+
+          {/* Standard pass recommendation */}
+          {wrongItems.length === 0 && missingItems.length === 0 && extraItems.length === 0 && (
+            <div className="improve-card">
+              <span className="improve-icon">💡</span>
+              <p>Fabulous pronunciation! All phonemes aligned perfectly. Keep repeating this challenge to build strong muscle memory.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Buttons */}
       <div className="practice-actions" style={{ marginTop: '1rem' }}>
         <button className="secondary-action" type="button" onClick={onRetry}>
           Practice Again
