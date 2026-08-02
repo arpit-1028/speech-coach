@@ -17,10 +17,11 @@ from app.services.recognizer import recognize_audio
 
 # New AI services
 from app.services.whisper_service import transcribe
-from app.services.gemini_service import translate_to_english
+from app.services.gemini_service import translate_to_english, translate_with_feedback
 from app.services.tts_service import generate_audio
 from app.services.grammar_service import get_random_sentence, get_sentence_by_id
 from app.services.grammar_checker import check_grammar
+from app.services.scenario_service import generate_scenario
 
 app = FastAPI()
 
@@ -217,6 +218,80 @@ async def check(
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
+
+
+# ── Translation / Interview Practice endpoints ─────────────────────────────────
+
+@app.get("/translation/scenario")
+async def translation_scenario(topic: str = "daily"):
+    """Return an AI-generated interview/conversation question in English + Hindi."""
+    try:
+        scenario = generate_scenario(topic)
+        return {
+            "topic": topic,
+            "english": scenario["english"],
+            "hindi": scenario["hindi"],
+        }
+    except Exception as e:
+        print("SCENARIO ERROR:", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/translate/interview")
+async def translate_interview(
+    audio: UploadFile = File(...),
+    question: str = Form(...),
+    accent: str = Form(default="indian"),
+):
+    """
+    Translate a Hindi/Hinglish audio answer to English AND provide interview coaching
+    feedback: score (1-10), strengths, missing points, better_answer.
+    """
+    print("TRANSLATE/INTERVIEW HIT — question:", question)
+    unique_id = uuid.uuid4().hex
+    input_file  = f"interview_in_{unique_id}.wav"
+    output_file = f"interview_out_{unique_id}.mp3"
+
+    try:
+        with open(input_file, "wb") as buffer:
+            shutil.copyfileobj(audio.file, buffer)
+
+        # Step 1: Speech-to-text
+        transcript = transcribe(input_file)
+        print("INTERVIEW TRANSCRIPT:", transcript)
+
+        # Step 2: Translate + get coaching feedback from Gemini
+        result = translate_with_feedback(transcript, question=question, accent=accent)
+        print("GEMINI INTERVIEW RESULT:", result)
+
+        # Step 3: TTS for the English translation
+        translation_text = result.get("translation", "")
+        import edge_tts
+        communicate = edge_tts.Communicate(translation_text, "en-US-AriaNeural")
+        await communicate.save(output_file)
+
+        audio_base64 = ""
+        if os.path.exists(output_file):
+            with open(output_file, "rb") as f:
+                audio_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+        return {
+            "transcript":   transcript,
+            "translation":  translation_text,
+            "score":        result.get("score", 0),
+            "strengths":    result.get("strengths", []),
+            "missing":      result.get("missing", []),
+            "better_answer": result.get("better_answer", ""),
+            "audio":        audio_base64,
+        }
+    except Exception as e:
+        print("INTERVIEW ERROR:", e)
+        import traceback; traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        for f in (input_file, output_file):
+            if os.path.exists(f):
+                os.remove(f)
 
 
 @app.post("/translate")

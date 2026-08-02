@@ -1,5 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
+export { API_BASE };
+
+async function _parseJSON(response) {
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { error: text }; }
+  }
+  if (!response.ok) throw new Error(data.detail || data.error || `Server error ${response.status}`);
+  return data;
+}
+
 export async function checkPronunciation(target, audioBlob) {
   const formData = new FormData();
   formData.append('audio', audioBlob, 'recording.wav');
@@ -93,4 +105,20 @@ export async function checkGrammar(level, sentenceId, audioBlob) {
   return data;
 }
 
-export { API_BASE };
+export async function fetchScenario(topic = 'daily') {
+  const response = await fetch(`${API_BASE}/translation/scenario?topic=${encodeURIComponent(topic)}`);
+  return _parseJSON(response);
+}
+
+export async function translateInterview(audioBlob, question, accent = 'indian') {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, 'interview_recording.wav');
+  formData.append('question', question);
+  formData.append('accent', accent);
+
+  const response = await fetch(`${API_BASE}/translate/interview`, {
+    method: 'POST',
+    body: formData
+  });
+  return _parseJSON(response);
+}

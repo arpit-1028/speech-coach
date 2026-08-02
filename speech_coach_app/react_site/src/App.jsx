@@ -5,7 +5,9 @@ import {
   checkPronunciation, 
   translateAudio, 
   fetchGrammarSentence, 
-  checkGrammar 
+  checkGrammar,
+  fetchScenario,
+  translateInterview
 } from './api.js';
 import { AudioRecorder } from './audio.js';
 import { loadSession, signInUser, signOutUser } from './auth.js';
@@ -88,6 +90,13 @@ export default function App() {
   const [transTranslation, setTransTranslation] = useState('');
   const [transAudioBase64, setTransAudioBase64] = useState('');
   
+  // Interview practice states
+  const [translateMode, setTranslateMode] = useState('simple'); // 'simple' | 'interview'
+  const [interviewTopic, setInterviewTopic] = useState('daily');
+  const [interviewQuestion, setInterviewQuestion] = useState(null);  // { english, hindi }
+  const [interviewLoading, setInterviewLoading] = useState(false);
+  const [interviewResult, setInterviewResult] = useState(null);  // { transcript, translation, score, strengths, missing, better_answer }
+  
   // Grammar practice states
   const [grammarLevel, setGrammarLevel] = useState('easy');
   const [grammarSentence, setGrammarSentence] = useState(null);
@@ -132,6 +141,13 @@ export default function App() {
     }
   }, [screen, grammarLevel]);
 
+  // Load interview question when entering translate screen in interview mode
+  useEffect(() => {
+    if (screen === 'translate' && translateMode === 'interview') {
+      loadInterviewQuestion();
+    }
+  }, [screen, translateMode, interviewTopic]);
+
   function triggerConfetti() {
     if (confettiEffectRef.current) {
       confettiEffectRef.current.start();
@@ -149,6 +165,21 @@ export default function App() {
       setError('Failed to fetch grammar challenge. Try again.');
     } finally {
       setGrammarLoading(false);
+    }
+  }
+
+  async function loadInterviewQuestion() {
+    setInterviewLoading(true);
+    setInterviewResult(null);
+    setInterviewQuestion(null);
+    setError('');
+    try {
+      const data = await fetchScenario(interviewTopic);
+      setInterviewQuestion(data);
+    } catch (err) {
+      setError('Failed to load question. Check connection.');
+    } finally {
+      setInterviewLoading(false);
     }
   }
 
@@ -225,11 +256,12 @@ export default function App() {
         setTransTranslation(data.translation);
         setTransAudioBase64(data.audio);
         setStatus('ready');
-
-        // Autoplay generated TTS translation audio
-        if (data.audio) {
-          playAudioBase64(data.audio);
-        }
+        if (data.audio) playAudioBase64(data.audio);
+      } else if (mode === 'interview') {
+        const data = await translateInterview(audioBlob, interviewQuestion?.english || '', 'indian');
+        setInterviewResult(data);
+        setStatus('ready');
+        if (data.audio) playAudioBase64(data.audio);
       } else if (mode === 'grammar') {
         const data = await checkGrammar(grammarLevel, grammarSentence.id, audioBlob);
         setGrammarResult(data);
@@ -469,51 +501,182 @@ export default function App() {
             </button>
             <p className="eyebrow">AI Tools</p>
             <h1>Voice Translator (Hindi → English)</h1>
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.8rem' }}>
-              Hold the record button, speak a sentence in Hindi, and hear it translated to fluent English instantly.
-            </p>
 
-            <div className="target-card">
-              <span>Status</span>
-              <p style={{ fontSize: '1.5rem', color: '#6366f1' }}>
-                {status === 'recording' ? 'Listening...' : status === 'processing' ? 'Generating translation...' : 'Tap Record to Speak'}
-              </p>
+            {/* Mode tabs */}
+            <div className="tool-tabs" style={{ marginBottom: '1.2rem' }}>
+              {[['simple', '🔄 Simple Translate'], ['interview', '🎙️ Interview Practice']].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`tool-tab ${translateMode === key ? 'tool-tab--active' : ''}`}
+                  onClick={() => { setTranslateMode(key); setInterviewResult(null); setTransTranscript(''); setTransTranslation(''); }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
-            <div className="practice-actions">
-              <button 
-                className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
-                type="button" 
-                onClick={() => handleRecord('translate')}
-              >
-                {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
-              </button>
-            </div>
-
-            {error && <div className="error-box">{error}</div>}
-
-            {(transTranscript || transTranslation) && (
-              <div className="translate-grid">
-                <div className="trans-card trans-card--hindi">
-                  <h3>Hindi Transcript</h3>
-                  <p>{transTranscript}</p>
+            {/* ── SIMPLE TRANSLATE ── */}
+            {translateMode === 'simple' && (
+              <>
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
+                  Speak a sentence in Hindi and hear it translated to fluent English instantly.
+                </p>
+                <div className="target-card">
+                  <span>Status</span>
+                  <p style={{ fontSize: '1.5rem', color: '#6366f1' }}>
+                    {status === 'recording' ? 'Listening...' : status === 'processing' ? 'Translating...' : 'Tap Record to Speak'}
+                  </p>
                 </div>
-                <div className="trans-card trans-card--english">
-                  <h3>English Translation</h3>
-                  <p>{transTranslation}</p>
-                  {transAudioBase64 && (
-                    <button 
-                      className="speaker-btn" 
-                      type="button" 
-                      onClick={() => playAudioBase64(transAudioBase64)}
-                      style={{ marginTop: '0.5rem' }}
-                      title="Listen Audio"
-                    >
-                      🔊
-                    </button>
-                  )}
+                <div className="practice-actions">
+                  <button
+                    className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
+                    type="button"
+                    onClick={() => handleRecord('translate')}
+                  >
+                    {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
+                  </button>
                 </div>
-              </div>
+                {error && <div className="error-box">{error}</div>}
+                {(transTranscript || transTranslation) && (
+                  <div className="translate-grid">
+                    <div className="trans-card trans-card--hindi">
+                      <h3>Hindi Transcript</h3>
+                      <p>{transTranscript}</p>
+                    </div>
+                    <div className="trans-card trans-card--english">
+                      <h3>English Translation</h3>
+                      <p>{transTranslation}</p>
+                      {transAudioBase64 && (
+                        <button className="speaker-btn" type="button"
+                          onClick={() => playAudioBase64(transAudioBase64)}
+                          style={{ marginTop: '0.5rem' }} title="Listen">
+                          🔊
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── INTERVIEW PRACTICE ── */}
+            {translateMode === 'interview' && (
+              <>
+                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
+                  Choose a topic, get an AI question, answer in Hindi — receive instant coaching feedback.
+                </p>
+
+                {/* Topic selector */}
+                <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
+                  {[['daily','Daily'],['placement','Placement'],['college','College'],['finance','Finance']].map(([key, label]) => (
+                    <button key={key} type="button"
+                      className={`tool-tab ${interviewTopic === key ? 'tool-tab--active' : ''}`}
+                      onClick={() => setInterviewTopic(key)}
+                    >{label}</button>
+                  ))}
+                </div>
+
+                {/* Question card */}
+                {interviewLoading && (
+                  <div className="target-card" style={{ textAlign: 'center', color: '#94a3b8' }}>Loading question...</div>
+                )}
+                {interviewQuestion && !interviewLoading && (
+                  <div className="target-card">
+                    <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>Question</span>
+                    <p style={{ fontSize: '1.3rem', marginTop: '0.6rem', marginBottom: '0.2rem' }}>{interviewQuestion.english}</p>
+                    <small style={{ color: '#94a3b8' }}>{interviewQuestion.hindi}</small>
+                  </div>
+                )}
+
+                {/* Refresh + Record */}
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                  <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
+                    disabled={interviewLoading || status === 'recording'}>
+                    🔄 New Question
+                  </button>
+                  <button
+                    className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
+                    type="button"
+                    style={{ flex: 1, height: '48px', borderRadius: '999px' }}
+                    onClick={() => handleRecord('interview')}
+                    disabled={!interviewQuestion || interviewLoading}
+                  >
+                    {status === 'recording' ? '⏹ Stop' : status === 'processing' ? '⏳ Analyzing...' : '🎙️ Answer'}
+                  </button>
+                </div>
+
+                {error && <div className="error-box">{error}</div>}
+
+                {/* Interview Feedback Result */}
+                {interviewResult && (
+                  <div style={{ display: 'grid', gap: '1rem', marginTop: '1.2rem' }}>
+
+                    {/* Score + Translation */}
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '80px 1fr', gap: '1rem',
+                      background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)',
+                      borderRadius: '14px', padding: '1.2rem'
+                    }}>
+                      <div style={{ display: 'grid', placeItems: 'center' }}>
+                        <div style={{
+                          width: '64px', height: '64px', borderRadius: '50%',
+                          background: interviewResult.score >= 7 ? 'rgba(16,185,129,0.15)' : interviewResult.score >= 5 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                          border: `3px solid ${interviewResult.score >= 7 ? '#10b981' : interviewResult.score >= 5 ? '#f59e0b' : '#ef4444'}`,
+                          display: 'grid', placeItems: 'center'
+                        }}>
+                          <strong style={{ fontSize: '1.4rem' }}>{interviewResult.score}/10</strong>
+                        </div>
+                      </div>
+                      <div>
+                        <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: '0 0 0.3rem' }}>YOUR ANSWER IN ENGLISH</p>
+                        <p style={{ margin: 0, fontSize: '1rem' }}>{interviewResult.translation}</p>
+                        {interviewResult.audio && (
+                          <button className="speaker-btn" type="button"
+                            onClick={() => playAudioBase64(interviewResult.audio)}
+                            style={{ marginTop: '0.5rem' }} title="Listen">🔊</button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Strengths */}
+                    <div style={{
+                      background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)',
+                      borderRadius: '12px', padding: '1rem'
+                    }}>
+                      <p style={{ color: '#10b981', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>✅ STRENGTHS</p>
+                      <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                        {(interviewResult.strengths || []).map((s, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{s}</li>)}
+                      </ul>
+                    </div>
+
+                    {/* Missing */}
+                    <div style={{
+                      background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
+                      borderRadius: '12px', padding: '1rem'
+                    }}>
+                      <p style={{ color: '#f59e0b', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>⚠️ IMPROVE</p>
+                      <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                        {(interviewResult.missing || []).map((m, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{m}</li>)}
+                      </ul>
+                    </div>
+
+                    {/* Better Answer */}
+                    {interviewResult.better_answer && (
+                      <div style={{
+                        background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)',
+                        borderRadius: '12px', padding: '1rem'
+                      }}>
+                        <p style={{ color: '#8b5cf6', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>💡 BETTER ANSWER</p>
+                        <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.6 }}>{interviewResult.better_answer}</p>
+                      </div>
+                    )}
+
+                    <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
+                      style={{ marginTop: '0.25rem' }}>🔄 Try Another Question</button>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
