@@ -11,7 +11,7 @@ import {
 } from './api.js';
 import { AudioRecorder } from './audio.js';
 import { loadSession, signInUser, signOutUser } from './auth.js';
-import { allLevels, getLevel, levelGroups, PASS_SCORE } from './levels.js';
+import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
 
 const TOOL_TABS = ['translate', 'grammar'];
@@ -79,6 +79,7 @@ export default function App() {
   const [user, setUser] = useState(() => loadSession());
   const [progress, setProgress] = useState(() => loadProgressForUser(loadSession()?.id));
   const [activeLevelId, setActiveLevelId] = useState(1);
+  const [selectedStageId, setSelectedStageId] = useState(1);
   const [screen, setScreen] = useState(user ? 'map' : 'auth');
   const [status, setStatus] = useState('ready');
   const [result, setResult] = useState(null);
@@ -373,59 +374,111 @@ export default function App() {
             <div className="path-stage">
               <div className="stage-head">
                 <div>
-                  <p className="eyebrow">AI Speaking Quest</p>
+                  <p className="eyebrow">AI Speaking Quest • 100 Challenges</p>
                   <h1>Clear English Journey</h1>
-                  <p>Practice targets and achieve 75% score to unlock the next level.</p>
+                  <p>Pass targets with 70%+ score to progress through 5 stages of difficulty.</p>
                 </div>
                 <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                  Launch Level {nextOpen.id}
+                  🚀 Start Q#{nextOpen.id}: {nextOpen.label}
                 </button>
               </div>
 
-              <div className="journey-line">
-                {allLevels.map((levelItem, index) => {
-                  const best = progress.completed[levelItem.id]?.bestScore || 0;
-                  const unlocked = isUnlocked(levelItem, progress);
-                  const current = levelItem.id === nextOpen.id;
-                  const done = best >= PASS_SCORE;
+              {/* 5 STAGES SELECTOR TABS */}
+              <div className="stages-tab-nav">
+                {stages.map((stg) => {
+                  const passedInStage = stg.questions.filter((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE).length;
+                  const isStageUnlocked = stg.id === 1 || stages.find((s) => s.id === stg.id - 1)?.questions.every((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE);
+                  const isSelected = selectedStageId === stg.id;
+
                   return (
                     <button
-                      className={`path-node ${done ? 'path-node--done' : ''} ${current ? 'path-node--current' : ''}`}
-                      disabled={!unlocked}
-                      key={levelItem.id}
+                      key={stg.id}
                       type="button"
-                      style={{ '--offset': `${index % 2 === 0 ? -40 : 40}px` }}
-                      onClick={() => startLevel(levelItem)}
+                      className={`stage-tab-card ${isSelected ? 'stage-tab-card--active' : ''} ${!isStageUnlocked ? 'stage-tab-card--locked' : ''}`}
+                      onClick={() => setSelectedStageId(stg.id)}
                     >
-                      <span className="node-copy">
-                        <strong>{levelItem.label}</strong>
-                        <small>{levelItem.focus}</small>
-                      </span>
-                      <span className="node-orb">
-                        {done ? '✓' : current ? '★' : unlocked ? levelItem.id : '🔒'}
-                      </span>
-                      <em>{best ? `${best}%` : unlocked ? 'Open' : 'Locked'}</em>
+                      <div className="stage-tab-header">
+                        <span className="stage-tab-emoji">{stg.emoji}</span>
+                        <span className="stage-tab-num">Stage {stg.id}</span>
+                      </div>
+                      <div className="stage-tab-title">{stg.title}</div>
+                      <div className="stage-tab-subtitle">{stg.subtitle}</div>
+                      <div className="stage-tab-progress">
+                        {passedInStage}/20 Passed {passedInStage === 20 ? '✓' : ''}
+                      </div>
                     </button>
                   );
                 })}
               </div>
+
+              {/* SELECTED STAGE QUESTIONS GRID */}
+              {(() => {
+                const currentStage = stages.find((s) => s.id === selectedStageId) || stages[0];
+                return (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem' }}>
+                        {currentStage.emoji} {currentStage.title}: <span style={{ color: '#94a3b8', fontWeight: 500 }}>{currentStage.subtitle}</span>
+                      </h3>
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        {currentStage.description}
+                      </span>
+                    </div>
+
+                    <div className="questions-grid">
+                      {currentStage.questions.map((q) => {
+                        const best = progress.completed[q.id]?.bestScore || 0;
+                        const unlocked = isUnlocked(q, progress);
+                        const isCurrent = q.id === nextOpen.id;
+                        const done = best >= PASS_SCORE;
+
+                        return (
+                          <button
+                            key={q.id}
+                            type="button"
+                            className={`question-node-card ${done ? 'question-node-card--done' : unlocked ? 'question-node-card--open' : 'question-node-card--locked'} ${isCurrent ? 'path-node--current' : ''}`}
+                            disabled={!unlocked}
+                            onClick={() => startLevel(q)}
+                          >
+                            <div className="q-node-top">
+                              <span className={`q-badge q-badge--${q.type}`}>
+                                Q{q.id} • {q.type}
+                              </span>
+                              <span className={`q-status ${done ? 'q-status--done' : unlocked ? 'q-status--open' : 'q-status--locked'}`}>
+                                {done ? `✓ ${best}%` : isCurrent ? '★ Next' : unlocked ? 'Open' : '🔒 Locked'}
+                              </span>
+                            </div>
+                            <div className="q-node-main">
+                              <strong>{q.label}</strong>
+                              <p>{q.target}</p>
+                            </div>
+                            <div className="q-node-focus">
+                              Focus: {q.focus}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <aside className="mission-rail">
               <div className="mini-stats">
                 <Stat label="Streak" value={`${progress.streak}d`} />
-                <Stat label="XP Progress" value={`${levelXp}%`} />
+                <Stat label="Total Passed" value={`${completedCount}/100`} />
               </div>
-              
+
               <div className="objective-card">
-                <p className="eyebrow">Today's Mission</p>
-                <h2>{nextOpen.label}</h2>
-                <p>Pass this challenge to boost your speaking continuity. Good luck!</p>
-                <div className="xp-track">
+                <p className="eyebrow">Next Up</p>
+                <h2>Q#{nextOpen.id}: {nextOpen.label}</h2>
+                <p>{nextOpen.target}</p>
+                <div className="xp-track" style={{ marginTop: '0.6rem', marginBottom: '0.8rem' }}>
                   <span style={{ width: `${progress.completed[nextOpen.id]?.bestScore || 0}%` }} />
                 </div>
                 <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                  Start Quest
+                  Start Practice (Target 70%+)
                 </button>
               </div>
 
@@ -435,14 +488,14 @@ export default function App() {
                 <p>
                   {lastAttempt 
                     ? `Last attempt: ${lastAttempt.score}% in "${lastAttempt.label}".` 
-                    : 'Practice words to record weak sounds.'}
+                    : 'Practice targets to record weak sounds.'}
                 </p>
               </div>
 
               <div className="objective-card">
-                <p className="eyebrow">Recent Achievements</p>
-                <h2>Streak Master</h2>
-                <p>Earned for practicing 2 days consecutively.</p>
+                <p className="eyebrow">Overall XP</p>
+                <h2>{progress.xp} XP Earned</h2>
+                <p>Keep practicing daily to unlock all 100 speaking challenges.</p>
               </div>
             </aside>
           </section>

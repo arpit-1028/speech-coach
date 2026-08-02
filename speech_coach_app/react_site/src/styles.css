@@ -637,15 +637,15 @@ main {
 .practice-panel {
   flex: 1;
   max-width: 800px;
-  margin: 2rem auto;
-  padding: 2.5rem;
+  margin: 1.5rem auto;
+  padding: 2rem;
   background: var(--bg-panel);
   border: 1px solid var(--border-glass);
   border-radius: 24px;
   box-shadow: var(--shadow-glass);
   display: flex;
   flex-direction: column;
-  gap: 1.8rem;
+  gap: 1.2rem;
   position: relative;
 }
 
@@ -695,12 +695,14 @@ main {
 }
 
 .target-card p {
-  font-size: 2.2rem;
+  font-size: 2rem;
   font-weight: 800;
-  letter-spacing: -1px;
+  letter-spacing: normal;
+  word-spacing: 0.04em;
+  line-height: 1.45;
   color: #fff;
-  margin-top: 1rem;
-  margin-bottom: 0.8rem;
+  margin-top: 0.8rem;
+  margin-bottom: 0.6rem;
 }
 
 .target-card small {
@@ -1547,3 +1549,194 @@ main {
     margin: 1rem;
   }
 }
+
+/* ── 5-STAGE QUEST MAP STYLING ── */
+.stages-tab-nav {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .stages-tab-nav {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .stages-tab-nav {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stage-tab-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-glass);
+  border-radius: 16px;
+  padding: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  transition: all 0.2s ease;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.stage-tab-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-2px);
+}
+
+.stage-tab-card--active {
+  border-color: var(--accent-color, #6366f1);
+  background: rgba(99, 102, 241, 0.12);
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.25);
+}
+
+.stage-tab-card--locked {
+  opacity: 0.55;
+}
+
+.stage-tab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stage-tab-emoji {
+  font-size: 1.2rem;
+}
+
+.stage-tab-num {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.stage-tab-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-tab-subtitle {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-tab-progress {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #10b981;
+  margin-top: 0.2rem;
+}
+
+/* Question Cards Grid */
+.questions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.question-node-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-glass);
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+  text-align: left;
+}
+
+.question-node-card:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.question-node-card--done {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.question-node-card--open {
+  border-color: rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.08);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+}
+
+.question-node-card--locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.q-node-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.q-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.q-badge--word { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+.q-badge--phrase { background: rgba(14, 165, 233, 0.15); color: #38bdf8; }
+.q-badge--sentence { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+.q-badge--paragraph { background: rgba(236, 72, 153, 0.15); color: #f472b6; }
+
+.q-status {
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.q-status--done { color: #10b981; }
+.q-status--open { color: #818cf8; }
+.q-status--locked { color: #64748b; }
+
+.q-node-main strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.q-node-main p {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.q-node-focus {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-weight: 600;
+}
+

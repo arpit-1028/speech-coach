@@ -1,3 +1,12 @@
+// progress.js — Persistent XP, streak, and level unlock logic
+//
+// Unlock Rules:
+//   • First 2 questions of EVERY stage are always unlocked.
+//   • Within a stage: need 70+ on question N to unlock question N+1.
+//   • Stage N+1's first 2 questions unlock once ALL 20 of stage N are passed (70+).
+
+import { stages, getStageForLevel } from './levels.js';
+
 const STORAGE_KEY = 'sapphireSpeechCoachProgress';
 
 const initialProgress = {
@@ -17,15 +26,15 @@ export function loadProgressForUser(userId = 'guest') {
     const stored = JSON.parse(localStorage.getItem(storageKey(userId)));
     return { ...initialProgress, ...stored };
   } catch {
-    return initialProgress;
+    return { ...initialProgress };
   }
 }
 
 export function saveAttempt(progress, level, score, userId = 'guest', analysis = {}) {
   const today = new Date().toISOString().slice(0, 10);
-  const passed = score >= 75;
+  const passed = score >= 70;
   const existing = progress.completed[level.id] || { bestScore: 0, attempts: 0 };
-  const wasAlreadyPassed = existing.bestScore >= 75;
+  const wasAlreadyPassed = existing.bestScore >= 70;
   const xpEarned = passed && !wasAlreadyPassed ? xpFor(score) : 0;
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const nextStreak =
@@ -65,17 +74,35 @@ export function saveAttempt(progress, level, score, userId = 'guest', analysis =
   return { next, xpEarned, passed };
 }
 
+// ── Unlock logic ───────────────────────────────────────────────────────────────
 export function isUnlocked(level, progress) {
-  // All Word Practice levels (id 1-12) are always unlocked
-  if (level.id <= 12) return true;
-  const previous = progress.completed[level.id - 1];
-  return previous?.bestScore >= 75;
+  const stage = getStageForLevel(level.id);
+  if (!stage) return false;
+
+  const questionsInStage = stage.questions;
+  const indexInStage = questionsInStage.findIndex((q) => q.id === level.id);
+
+  // First 2 questions of every stage are always open
+  if (indexInStage < 2) {
+    // But stage 1 is always accessible; higher stages need prev stage complete
+    if (stage.id === 1) return true;
+    // For stages 2-5: first 2 unlock only if all 20 of previous stage are passed
+    const prevStage = stages.find((s) => s.id === stage.id - 1);
+    if (!prevStage) return false;
+    return prevStage.questions.every((q) => (progress.completed[q.id]?.bestScore || 0) >= 70);
+  }
+
+  // Questions 3-20 within a stage: need 70+ on the previous question
+  const prevQuestion = questionsInStage[indexInStage - 1];
+  return (progress.completed[prevQuestion.id]?.bestScore || 0) >= 70;
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function xpFor(score) {
-  if (score >= 95) return 40;
-  if (score >= 85) return 30;
-  return 20;
+  if (score >= 95) return 50;
+  if (score >= 85) return 35;
+  if (score >= 70) return 20;
+  return 0;
 }
 
 function storageKey(userId) {
