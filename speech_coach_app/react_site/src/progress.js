@@ -82,14 +82,9 @@ export function isUnlocked(level, progress) {
   const questionsInStage = stage.questions;
   const indexInStage = questionsInStage.findIndex((q) => q.id === level.id);
 
-  // First 2 questions of every stage are always open
+  // First 2 questions of EVERY stage are ALWAYS unlocked from the start
   if (indexInStage < 2) {
-    // But stage 1 is always accessible; higher stages need prev stage complete
-    if (stage.id === 1) return true;
-    // For stages 2-5: first 2 unlock only if all 20 of previous stage are passed
-    const prevStage = stages.find((s) => s.id === stage.id - 1);
-    if (!prevStage) return false;
-    return prevStage.questions.every((q) => (progress.completed[q.id]?.bestScore || 0) >= 70);
+    return true;
   }
 
   // Questions 3-20 within a stage: need 70+ on the previous question

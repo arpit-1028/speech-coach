@@ -10,11 +10,9 @@ import {
   translateInterview
 } from './api.js';
 import { AudioRecorder } from './audio.js';
-import { loadSession, signInUser, signOutUser } from './auth.js';
+import { loadSession, signInUser, signUpUser, signOutUser } from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
-
-const TOOL_TABS = ['translate', 'grammar'];
 
 // Canvas Confetti animation class
 class ConfettiEffect {
@@ -80,11 +78,12 @@ export default function App() {
   const [progress, setProgress] = useState(() => loadProgressForUser(loadSession()?.id));
   const [activeLevelId, setActiveLevelId] = useState(1);
   const [selectedStageId, setSelectedStageId] = useState(1);
-  const [screen, setScreen] = useState(user ? 'map' : 'auth');
+  const [screen, setScreen] = useState(user ? 'map' : 'auth'); // 'map' | 'practice' | 'result' | 'translate' | 'grammar' | 'auth'
   const [status, setStatus] = useState('ready');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   
   // Translation feature states
   const [transTranscript, setTransTranscript] = useState('');
@@ -94,9 +93,9 @@ export default function App() {
   // Interview practice states
   const [translateMode, setTranslateMode] = useState('simple'); // 'simple' | 'interview'
   const [interviewTopic, setInterviewTopic] = useState('daily');
-  const [interviewQuestion, setInterviewQuestion] = useState(null);  // { english, hindi }
+  const [interviewQuestion, setInterviewQuestion] = useState(null);
   const [interviewLoading, setInterviewLoading] = useState(false);
-  const [interviewResult, setInterviewResult] = useState(null);  // { transcript, translation, score, strengths, missing, better_answer }
+  const [interviewResult, setInterviewResult] = useState(null);
   
   // Grammar practice states
   const [grammarLevel, setGrammarLevel] = useState('easy');
@@ -135,14 +134,12 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [status]);
 
-  // Load initial grammar sentence when entering grammar screen
   useEffect(() => {
     if (screen === 'grammar') {
       loadNextGrammar();
     }
   }, [screen, grammarLevel]);
 
-  // Load interview question when entering translate screen in interview mode
   useEffect(() => {
     if (screen === 'translate' && translateMode === 'interview') {
       loadInterviewQuestion();
@@ -162,7 +159,7 @@ export default function App() {
     try {
       const data = await fetchGrammarSentence(grammarLevel);
       setGrammarSentence(data);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch grammar challenge. Try again.');
     } finally {
       setGrammarLoading(false);
@@ -177,29 +174,23 @@ export default function App() {
     try {
       const data = await fetchScenario(interviewTopic);
       setInterviewQuestion(data);
-    } catch (err) {
+    } catch {
       setError('Failed to load question. Check connection.');
     } finally {
       setInterviewLoading(false);
     }
   }
 
-  function handleAuth(event) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const nextUser = signInUser({
-      name: formData.get('name'),
-      mobile: formData.get('mobile'),
-      city: formData.get('city')
-    });
-    setUser(nextUser);
-    setProgress(loadProgressForUser(nextUser.id));
+  async function handleAuthSuccess(loggedInUser) {
+    setUser(loggedInUser);
+    setProgress(loadProgressForUser(loggedInUser.id));
     setScreen('map');
   }
 
   function handleSignOut() {
     signOutUser();
     setUser(null);
+    setShowProfileModal(false);
     setProgress(loadProgressForUser('guest'));
     setScreen('auth');
   }
@@ -299,8 +290,11 @@ export default function App() {
   }
 
   if (screen === 'auth') {
-    return <AuthScreen onSubmit={handleAuth} />;
+    return <AuthScreen onAuthSuccess={handleAuthSuccess} />;
   }
+
+  // Current active main section: 'pronunciation' | 'translation' | 'grammar'
+  const activeSection = (screen === 'translate') ? 'translation' : (screen === 'grammar') ? 'grammar' : 'pronunciation';
 
   return (
     <div className="app-shell">
@@ -311,41 +305,63 @@ export default function App() {
           <span className="brand-mark">S</span>
           <div>
             <strong>Sapphire Speech Coach</strong>
-            <small>{user?.name || 'AI speaking quest'} / Level {level}</small>
+            <small>{user?.libraryId ? `Lib: ${user.libraryId}` : 'AI Speaking Quest'} • Level {level}</small>
           </div>
         </div>
-        <div className="top-stats">
+
+        <div className="top-stats" style={{ gap: '0.8rem' }}>
           <Stat label="XP" value={progress.xp} />
           <Stat label="Streak" value={`${progress.streak}d`} />
-          <Stat label="Done" value={`${completedCount}/${allLevels.length}`} />
-          <button className="logout-btn" type="button" onClick={handleSignOut}>Logout</button>
+          <Stat label="Done" value={`${completedCount}/100`} />
+          
+          <button 
+            type="button" 
+            className="secondary-action" 
+            onClick={() => setShowProfileModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px' }}
+          >
+            <span>{user?.avatar || '👨‍🎓'}</span>
+            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{user?.name || 'Profile'}</span>
+          </button>
         </div>
       </header>
 
+      {/* PROFILE MODAL */}
+      {showProfileModal && (
+        <ProfileModal 
+          user={user} 
+          progress={progress} 
+          completedCount={completedCount} 
+          weakSounds={weakSounds}
+          onClose={() => setShowProfileModal(false)}
+          onSignOut={handleSignOut}
+        />
+      )}
+
       <main>
+        {/* SIDEBAR WITH 3 SECTIONS ONLY */}
         <aside className="sidebar">
-          <div className="profile-card">
-            <span className="avatar-ring">SC</span>
-            <strong>{user?.name || 'Speaker'}</strong>
-            <small>Rank: {level >= 4 ? 'Fluency Ninja' : 'Pro Speaker'}</small>
+          <div 
+            className="profile-card" 
+            onClick={() => setShowProfileModal(true)}
+            style={{ cursor: 'pointer' }}
+          >
+            <span className="avatar-ring" style={{ fontSize: '1.6rem' }}>{user?.avatar || '👨‍🎓'}</span>
+            <strong>{user?.name || 'Student'}</strong>
+            <small>{user?.libraryId ? `ID: ${user.libraryId}` : 'Click for Profile'}</small>
           </div>
+
+          {/* 3 MAIN NAVIGATION SECTIONS AS REQUESTED */}
           <div className="nav-stack">
             <button 
-              className={`nav-item ${screen === 'map' ? 'nav-item--active' : ''}`} 
+              className={`nav-item ${activeSection === 'pronunciation' ? 'nav-item--active' : ''}`} 
               type="button" 
               onClick={() => setScreen('map')}
             >
-              Quest Map
+              🗣️ Pronunciation
             </button>
             <button 
-              className={`nav-item ${screen === 'practice' ? 'nav-item--active' : ''}`} 
-              type="button" 
-              onClick={() => startLevel(nextOpen)}
-            >
-              Practice
-            </button>
-            <button 
-              className={`nav-item ${screen === 'translate' ? 'nav-item--active' : ''}`} 
+              className={`nav-item ${activeSection === 'translation' ? 'nav-item--active' : ''}`} 
               type="button" 
               onClick={() => {
                 setTransTranscript('');
@@ -354,512 +370,692 @@ export default function App() {
                 setScreen('translate');
               }}
             >
-              Translator
+              🔄 Translation
             </button>
             <button 
-              className={`nav-item ${screen === 'grammar' ? 'nav-item--active' : ''}`} 
+              className={`nav-item ${activeSection === 'grammar' ? 'nav-item--active' : ''}`} 
               type="button" 
               onClick={() => {
                 setGrammarResult(null);
                 setScreen('grammar');
               }}
             >
-              Grammar
+              📝 Grammar
             </button>
           </div>
         </aside>
 
-        {screen === 'map' && (
-          <section className="game-shell">
-            <div className="path-stage">
-              <div className="stage-head">
-                <div>
-                  <p className="eyebrow">AI Speaking Quest • 100 Challenges</p>
-                  <h1>Clear English Journey</h1>
-                  <p>Pass targets with 70%+ score to progress through 5 stages of difficulty.</p>
-                </div>
-                <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                  🚀 Start Q#{nextOpen.id}: {nextOpen.label}
-                </button>
-              </div>
-
-              {/* 5 STAGES SELECTOR TABS */}
-              <div className="stages-tab-nav">
-                {stages.map((stg) => {
-                  const passedInStage = stg.questions.filter((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE).length;
-                  const isStageUnlocked = stg.id === 1 || stages.find((s) => s.id === stg.id - 1)?.questions.every((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE);
-                  const isSelected = selectedStageId === stg.id;
-
-                  return (
-                    <button
-                      key={stg.id}
-                      type="button"
-                      className={`stage-tab-card ${isSelected ? 'stage-tab-card--active' : ''} ${!isStageUnlocked ? 'stage-tab-card--locked' : ''}`}
-                      onClick={() => setSelectedStageId(stg.id)}
-                    >
-                      <div className="stage-tab-header">
-                        <span className="stage-tab-emoji">{stg.emoji}</span>
-                        <span className="stage-tab-num">Stage {stg.id}</span>
-                      </div>
-                      <div className="stage-tab-title">{stg.title}</div>
-                      <div className="stage-tab-subtitle">{stg.subtitle}</div>
-                      <div className="stage-tab-progress">
-                        {passedInStage}/20 Passed {passedInStage === 20 ? '✓' : ''}
-                      </div>
+        {/* 1. PRONUNCIATION SECTION (QUEST MAP) */}
+        {(screen === 'map' || screen === 'practice' || screen === 'result') && (
+          <div key={screen} className="animated-section" style={{ flex: 1 }}>
+            {screen === 'map' && (
+              <section className="game-shell">
+                <div className="path-stage">
+                  <div className="stage-head">
+                    <div>
+                      <p className="eyebrow">AI Speaking Quest • 100 Challenges</p>
+                      <h1>Clear English Journey</h1>
+                      <p>Pass targets with 70%+ score to progress through 5 stages of difficulty.</p>
+                    </div>
+                    <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
+                      🚀 Start Q#{nextOpen.id}: {nextOpen.label}
                     </button>
-                  );
-                })}
-              </div>
-
-              {/* SELECTED STAGE QUESTIONS GRID */}
-              {(() => {
-                const currentStage = stages.find((s) => s.id === selectedStageId) || stages[0];
-                return (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem' }}>
-                        {currentStage.emoji} {currentStage.title}: <span style={{ color: '#94a3b8', fontWeight: 500 }}>{currentStage.subtitle}</span>
-                      </h3>
-                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                        {currentStage.description}
-                      </span>
-                    </div>
-
-                    <div className="questions-grid">
-                      {currentStage.questions.map((q) => {
-                        const best = progress.completed[q.id]?.bestScore || 0;
-                        const unlocked = isUnlocked(q, progress);
-                        const isCurrent = q.id === nextOpen.id;
-                        const done = best >= PASS_SCORE;
-
-                        return (
-                          <button
-                            key={q.id}
-                            type="button"
-                            className={`question-node-card ${done ? 'question-node-card--done' : unlocked ? 'question-node-card--open' : 'question-node-card--locked'} ${isCurrent ? 'path-node--current' : ''}`}
-                            disabled={!unlocked}
-                            onClick={() => startLevel(q)}
-                          >
-                            <div className="q-node-top">
-                              <span className={`q-badge q-badge--${q.type}`}>
-                                Q{q.id} • {q.type}
-                              </span>
-                              <span className={`q-status ${done ? 'q-status--done' : unlocked ? 'q-status--open' : 'q-status--locked'}`}>
-                                {done ? `✓ ${best}%` : isCurrent ? '★ Next' : unlocked ? 'Open' : '🔒 Locked'}
-                              </span>
-                            </div>
-                            <div className="q-node-main">
-                              <strong>{q.label}</strong>
-                              <p>{q.target}</p>
-                            </div>
-                            <div className="q-node-focus">
-                              Focus: {q.focus}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
                   </div>
-                );
-              })()}
-            </div>
 
-            <aside className="mission-rail">
-              <div className="mini-stats">
-                <Stat label="Streak" value={`${progress.streak}d`} />
-                <Stat label="Total Passed" value={`${completedCount}/100`} />
-              </div>
+                  {/* 5 STAGES SELECTOR TABS */}
+                  <div className="stages-tab-nav">
+                    {stages.map((stg) => {
+                      const passedInStage = stg.questions.filter((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE).length;
+                      const isSelected = selectedStageId === stg.id;
 
-              <div className="objective-card">
-                <p className="eyebrow">Next Up</p>
-                <h2>Q#{nextOpen.id}: {nextOpen.label}</h2>
-                <p>{nextOpen.target}</p>
-                <div className="xp-track" style={{ marginTop: '0.6rem', marginBottom: '0.8rem' }}>
-                  <span style={{ width: `${progress.completed[nextOpen.id]?.bestScore || 0}%` }} />
-                </div>
-                <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                  Start Practice (Target 70%+)
-                </button>
-              </div>
-
-              <div className="objective-card">
-                <p className="eyebrow">Weak Sounds Analysis</p>
-                <h2>{weakSounds.length ? weakSounds.join(' / ') : 'Clean Phonemes'}</h2>
-                <p>
-                  {lastAttempt 
-                    ? `Last attempt: ${lastAttempt.score}% in "${lastAttempt.label}".` 
-                    : 'Practice targets to record weak sounds.'}
-                </p>
-              </div>
-
-              <div className="objective-card">
-                <p className="eyebrow">Overall XP</p>
-                <h2>{progress.xp} XP Earned</h2>
-                <p>Keep practicing daily to unlock all 100 speaking challenges.</p>
-              </div>
-            </aside>
-          </section>
-        )}
-
-        {screen === 'practice' && (
-          <section className="practice-panel">
-            <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-              ← Back to Map
-            </button>
-            <p className="eyebrow">{activeLevel.groupTitle} / Level {activeLevel.id}</p>
-            <h1>{activeLevel.label}</h1>
-            <div className="target-card">
-              <span>{activeLevel.type}</span>
-              <p>{activeLevel.target}</p>
-              <small>Focus: {activeLevel.focus}</small>
-            </div>
-            
-            <LiveCoach status={status} seconds={recordingSeconds} levelType={activeLevel.type} />
-            
-            <div className="practice-actions">
-              <button className="secondary-action" type="button" onClick={listenTarget}>
-                Listen Target
-              </button>
-              <button 
-                className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
-                type="button" 
-                onClick={() => handleRecord('pronunciation')}
-              >
-                {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
-              </button>
-            </div>
-            {error && <div className="error-box">{error}</div>}
-            <p className="api-note">Engine base: {API_BASE}</p>
-          </section>
-        )}
-
-        {screen === 'result' && result && (
-          <section className="practice-panel">
-            <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-              ← Back to Map
-            </button>
-            <ResultScreen 
-              result={result} 
-              activeLevel={activeLevel} 
-              onRetry={() => startLevel(activeLevel)} 
-              onMap={() => setScreen('map')} 
-            />
-          </section>
-        )}
-
-        {screen === 'translate' && (
-          <section className="practice-panel">
-            <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-              ← Back to Map
-            </button>
-            <p className="eyebrow">AI Tools</p>
-            <h1>Voice Translator (Hindi → English)</h1>
-
-            {/* Mode tabs */}
-            <div className="tool-tabs" style={{ marginBottom: '1.2rem' }}>
-              {[['simple', '🔄 Simple Translate'], ['interview', '🎙️ Interview Practice']].map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`tool-tab ${translateMode === key ? 'tool-tab--active' : ''}`}
-                  onClick={() => { setTranslateMode(key); setInterviewResult(null); setTransTranscript(''); setTransTranslation(''); }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* ── SIMPLE TRANSLATE ── */}
-            {translateMode === 'simple' && (
-              <>
-                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
-                  Speak a sentence in Hindi and hear it translated to fluent English instantly.
-                </p>
-                <div className="target-card">
-                  <span>Status</span>
-                  <p style={{ fontSize: '1.5rem', color: '#6366f1' }}>
-                    {status === 'recording' ? 'Listening...' : status === 'processing' ? 'Translating...' : 'Tap Record to Speak'}
-                  </p>
-                </div>
-                <div className="practice-actions">
-                  <button
-                    className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
-                    type="button"
-                    onClick={() => handleRecord('translate')}
-                  >
-                    {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
-                  </button>
-                </div>
-                {error && <div className="error-box">{error}</div>}
-                {(transTranscript || transTranslation) && (
-                  <div className="translate-grid">
-                    <div className="trans-card trans-card--hindi">
-                      <h3>Hindi Transcript</h3>
-                      <p>{transTranscript}</p>
-                    </div>
-                    <div className="trans-card trans-card--english">
-                      <h3>English Translation</h3>
-                      <p>{transTranslation}</p>
-                      {transAudioBase64 && (
-                        <button className="speaker-btn" type="button"
-                          onClick={() => playAudioBase64(transAudioBase64)}
-                          style={{ marginTop: '0.5rem' }} title="Listen">
-                          🔊
+                      return (
+                        <button
+                          key={stg.id}
+                          type="button"
+                          className={`stage-tab-card ${isSelected ? 'stage-tab-card--active' : ''}`}
+                          onClick={() => setSelectedStageId(stg.id)}
+                        >
+                          <div className="stage-tab-header">
+                            <span className="stage-tab-emoji">{stg.emoji}</span>
+                            <span className="stage-tab-num">Stage {stg.id}</span>
+                          </div>
+                          <div className="stage-tab-title">{stg.title}</div>
+                          <div className="stage-tab-subtitle">{stg.subtitle}</div>
+                          <div className="stage-tab-progress">
+                            {passedInStage}/20 Passed {passedInStage === 20 ? '✓' : ''}
+                          </div>
                         </button>
-                      )}
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
-              </>
-            )}
 
-            {/* ── INTERVIEW PRACTICE ── */}
-            {translateMode === 'interview' && (
-              <>
-                <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
-                  Choose a topic, get an AI question, answer in Hindi — receive instant coaching feedback.
-                </p>
+                  {/* SELECTED STAGE QUESTIONS GRID */}
+                  {(() => {
+                    const currentStage = stages.find((s) => s.id === selectedStageId) || stages[0];
+                    return (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem' }}>
+                            {currentStage.emoji} {currentStage.title}: <span style={{ color: '#94a3b8', fontWeight: 500 }}>{currentStage.subtitle}</span>
+                          </h3>
+                          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                            {currentStage.description}
+                          </span>
+                        </div>
 
-                {/* Topic selector */}
-                <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
-                  {[['daily','Daily'],['placement','Placement'],['college','College'],['finance','Finance']].map(([key, label]) => (
-                    <button key={key} type="button"
-                      className={`tool-tab ${interviewTopic === key ? 'tool-tab--active' : ''}`}
-                      onClick={() => setInterviewTopic(key)}
-                    >{label}</button>
-                  ))}
-                </div>
+                        <div className="questions-grid">
+                          {currentStage.questions.map((q) => {
+                            const best = progress.completed[q.id]?.bestScore || 0;
+                            const unlocked = isUnlocked(q, progress);
+                            const isCurrent = q.id === nextOpen.id;
+                            const done = best >= PASS_SCORE;
 
-                {/* Question card */}
-                {interviewLoading && (
-                  <div className="target-card" style={{ textAlign: 'center', color: '#94a3b8' }}>Loading question...</div>
-                )}
-                {interviewQuestion && !interviewLoading && (
-                  <div className="target-card">
-                    <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>Question</span>
-                    <p style={{ fontSize: '1.3rem', marginTop: '0.6rem', marginBottom: '0.2rem' }}>{interviewQuestion.english}</p>
-                    <small style={{ color: '#94a3b8' }}>{interviewQuestion.hindi}</small>
-                  </div>
-                )}
-
-                {/* Refresh + Record */}
-                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-                  <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
-                    disabled={interviewLoading || status === 'recording'}>
-                    🔄 New Question
-                  </button>
-                  <button
-                    className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
-                    type="button"
-                    style={{ flex: 1, height: '48px', borderRadius: '999px' }}
-                    onClick={() => handleRecord('interview')}
-                    disabled={!interviewQuestion || interviewLoading}
-                  >
-                    {status === 'recording' ? '⏹ Stop' : status === 'processing' ? '⏳ Analyzing...' : '🎙️ Answer'}
-                  </button>
-                </div>
-
-                {error && <div className="error-box">{error}</div>}
-
-                {/* Interview Feedback Result */}
-                {interviewResult && (
-                  <div style={{ display: 'grid', gap: '1rem', marginTop: '1.2rem' }}>
-
-                    {/* Score + Translation */}
-                    <div style={{
-                      display: 'grid', gridTemplateColumns: '80px 1fr', gap: '1rem',
-                      background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)',
-                      borderRadius: '14px', padding: '1.2rem'
-                    }}>
-                      <div style={{ display: 'grid', placeItems: 'center' }}>
-                        <div style={{
-                          width: '64px', height: '64px', borderRadius: '50%',
-                          background: interviewResult.score >= 7 ? 'rgba(16,185,129,0.15)' : interviewResult.score >= 5 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-                          border: `3px solid ${interviewResult.score >= 7 ? '#10b981' : interviewResult.score >= 5 ? '#f59e0b' : '#ef4444'}`,
-                          display: 'grid', placeItems: 'center'
-                        }}>
-                          <strong style={{ fontSize: '1.4rem' }}>{interviewResult.score}/10</strong>
+                            return (
+                              <button
+                                key={q.id}
+                                type="button"
+                                className={`question-node-card ${done ? 'question-node-card--done' : unlocked ? 'question-node-card--open' : 'question-node-card--locked'} ${isCurrent ? 'path-node--current' : ''}`}
+                                disabled={!unlocked}
+                                onClick={() => startLevel(q)}
+                              >
+                                <div className="q-node-top">
+                                  <span className={`q-badge q-badge--${q.type}`}>
+                                    Q{q.id} • {q.type}
+                                  </span>
+                                  <span className={`q-status ${done ? 'q-status--done' : unlocked ? 'q-status--open' : 'q-status--locked'}`}>
+                                    {done ? `✓ ${best}%` : isCurrent ? '★ Next' : unlocked ? 'Open' : '🔒 Locked'}
+                                  </span>
+                                </div>
+                                <div className="q-node-main">
+                                  <strong>{q.label}</strong>
+                                  <p>{q.target}</p>
+                                </div>
+                                <div className="q-node-focus">
+                                  Focus: {q.focus}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                      <div>
-                        <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: '0 0 0.3rem' }}>YOUR ANSWER IN ENGLISH</p>
-                        <p style={{ margin: 0, fontSize: '1rem' }}>{interviewResult.translation}</p>
-                        {interviewResult.audio && (
+                    );
+                  })()}
+                </div>
+
+                <aside className="mission-rail">
+                  <div className="mini-stats">
+                    <Stat label="Streak" value={`${progress.streak}d`} />
+                    <Stat label="Total Passed" value={`${completedCount}/100`} />
+                  </div>
+
+                  <div className="objective-card">
+                    <p className="eyebrow">Next Up</p>
+                    <h2>Q#{nextOpen.id}: {nextOpen.label}</h2>
+                    <p>{nextOpen.target}</p>
+                    <div className="xp-track" style={{ marginTop: '0.6rem', marginBottom: '0.8rem' }}>
+                      <span style={{ width: `${progress.completed[nextOpen.id]?.bestScore || 0}%` }} />
+                    </div>
+                    <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
+                      Start Practice (Target 70%+)
+                    </button>
+                  </div>
+
+                  <div className="objective-card">
+                    <p className="eyebrow">Weak Sounds Analysis</p>
+                    <h2>{weakSounds.length ? weakSounds.join(' / ') : 'Clean Phonemes'}</h2>
+                    <p>
+                      {lastAttempt 
+                        ? `Last attempt: ${lastAttempt.score}% in "${lastAttempt.label}".` 
+                        : 'Practice targets to record weak sounds.'}
+                    </p>
+                  </div>
+
+                  <div className="objective-card">
+                    <p className="eyebrow">Overall XP</p>
+                    <h2>{progress.xp} XP Earned</h2>
+                    <p>Keep practicing daily to unlock all 100 speaking challenges.</p>
+                  </div>
+                </aside>
+              </section>
+            )}
+
+            {screen === 'practice' && (
+              <section className="practice-panel">
+                <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
+                  ← Back to Quest Map
+                </button>
+                <p className="eyebrow">{activeLevel.stageTitle} / Q#{activeLevel.id}</p>
+                <h1>{activeLevel.label}</h1>
+                <div className="target-card">
+                  <span>{activeLevel.type}</span>
+                  <p>{activeLevel.target}</p>
+                  <small>Focus: {activeLevel.focus}</small>
+                </div>
+                
+                <LiveCoach status={status} seconds={recordingSeconds} levelType={activeLevel.type} />
+                
+                <div className="practice-actions">
+                  <button className="secondary-action" type="button" onClick={listenTarget}>
+                    🔊 Listen Target
+                  </button>
+                  <button 
+                    className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
+                    type="button" 
+                    onClick={() => handleRecord('pronunciation')}
+                  >
+                    {status === 'recording' ? '⏹ Stop' : status === 'processing' ? '⏳ Analyzing...' : '🎙️ Record'}
+                  </button>
+                </div>
+                {error && <div className="error-box">{error}</div>}
+              </section>
+            )}
+
+            {screen === 'result' && result && (
+              <section className="practice-panel">
+                <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
+                  ← Back to Quest Map
+                </button>
+                <ResultScreen 
+                  result={result} 
+                  activeLevel={activeLevel} 
+                  onRetry={() => startLevel(activeLevel)} 
+                  onMap={() => setScreen('map')} 
+                />
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* 2. TRANSLATION SECTION */}
+        {screen === 'translate' && (
+          <div key="translate" className="animated-section" style={{ flex: 1 }}>
+            <section className="practice-panel">
+              <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
+                ← Back to Quest Map
+              </button>
+              <p className="eyebrow">AI Speaking Assistant</p>
+              <h1>Voice & Interview Translator</h1>
+
+              <div className="tool-tabs" style={{ marginBottom: '1.2rem' }}>
+                {[['simple', '🔄 Simple Translate'], ['interview', '🎙️ Interview Practice']].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`tool-tab ${translateMode === key ? 'tool-tab--active' : ''}`}
+                    onClick={() => { setTranslateMode(key); setInterviewResult(null); setTransTranscript(''); setTransTranslation(''); }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {translateMode === 'simple' && (
+                <>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
+                    Speak a sentence in Hindi and hear it translated to fluent English instantly.
+                  </p>
+                  <div className="target-card">
+                    <span>Status</span>
+                    <p style={{ fontSize: '1.5rem', color: '#6366f1' }}>
+                      {status === 'recording' ? 'Listening...' : status === 'processing' ? 'Translating...' : 'Tap Record to Speak'}
+                    </p>
+                  </div>
+                  <div className="practice-actions">
+                    <button
+                      className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
+                      type="button"
+                      onClick={() => handleRecord('translate')}
+                    >
+                      {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
+                    </button>
+                  </div>
+                  {error && <div className="error-box">{error}</div>}
+                  {(transTranscript || transTranslation) && (
+                    <div className="translate-grid">
+                      <div className="trans-card trans-card--hindi">
+                        <h3>Hindi Transcript</h3>
+                        <p>{transTranscript}</p>
+                      </div>
+                      <div className="trans-card trans-card--english">
+                        <h3>English Translation</h3>
+                        <p>{transTranslation}</p>
+                        {transAudioBase64 && (
                           <button className="speaker-btn" type="button"
-                            onClick={() => playAudioBase64(interviewResult.audio)}
-                            style={{ marginTop: '0.5rem' }} title="Listen">🔊</button>
+                            onClick={() => playAudioBase64(transAudioBase64)}
+                            style={{ marginTop: '0.5rem' }} title="Listen">
+                            🔊
+                          </button>
                         )}
                       </div>
                     </div>
+                  )}
+                </>
+              )}
 
-                    {/* Strengths */}
-                    <div style={{
-                      background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)',
-                      borderRadius: '12px', padding: '1rem'
-                    }}>
-                      <p style={{ color: '#10b981', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>✅ STRENGTHS</p>
-                      <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                        {(interviewResult.strengths || []).map((s, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{s}</li>)}
-                      </ul>
-                    </div>
+              {translateMode === 'interview' && (
+                <>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
+                    Choose a topic, get an AI question, answer in Hindi — receive instant coaching feedback.
+                  </p>
 
-                    {/* Missing */}
-                    <div style={{
-                      background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
-                      borderRadius: '12px', padding: '1rem'
-                    }}>
-                      <p style={{ color: '#f59e0b', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>⚠️ IMPROVE</p>
-                      <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                        {(interviewResult.missing || []).map((m, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{m}</li>)}
-                      </ul>
-                    </div>
-
-                    {/* Better Answer */}
-                    {interviewResult.better_answer && (
-                      <div style={{
-                        background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)',
-                        borderRadius: '12px', padding: '1rem'
-                      }}>
-                        <p style={{ color: '#8b5cf6', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>💡 BETTER ANSWER</p>
-                        <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.6 }}>{interviewResult.better_answer}</p>
-                      </div>
-                    )}
-
-                    <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
-                      style={{ marginTop: '0.25rem' }}>🔄 Try Another Question</button>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-        )}
-
-        {screen === 'grammar' && (
-          <section className="practice-panel">
-            <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-              ← Back to Map
-            </button>
-            <p className="eyebrow">AI Grammar Quest</p>
-            <h1>AI Grammar Coach</h1>
-
-            <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
-              {['easy', 'medium', 'hard'].map((levelKey) => (
-                <button 
-                  className={`tool-tab ${grammarLevel === levelKey ? 'tool-tab--active' : ''}`} 
-                  key={levelKey} 
-                  type="button" 
-                  onClick={() => setGrammarLevel(levelKey)}
-                >
-                  {levelKey.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            {grammarLoading && <div className="error-box" style={{ background: 'transparent' }}>Loading sentence...</div>}
-            
-            {grammarSentence && !grammarLoading && (
-              <div className="target-card">
-                <span className="scenario-badge">{grammarSentence.scenario}</span>
-                <p style={{ fontSize: '1.6rem', color: '#f43f5e', marginTop: '1.2rem' }}>
-                  ❌ "{grammarSentence.wrong}"
-                </p>
-                <small style={{ display: 'block', marginTop: '0.5rem' }}>
-                  Speak the grammatically corrected version of this sentence.
-                </small>
-              </div>
-            )}
-
-            <div className="practice-actions">
-              <button 
-                className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
-                type="button" 
-                onClick={() => handleRecord('grammar')}
-                disabled={grammarLoading}
-              >
-                {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
-              </button>
-            </div>
-
-            {error && <div className="error-box">{error}</div>}
-
-            {grammarResult && (
-              <div className="score-layout" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '1.2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                  <div className={`score-orb ${grammarResult.grammar_correct ? 'score-orb--pass' : 'score-orb--retry'}`}>
-                    <strong>{grammarResult.score}</strong>
-                    <span>Score</span>
-                  </div>
-                  <div>
-                    <h1>Grade: {grammarResult.grade || 'N/A'}</h1>
-                    <p>{grammarResult.grammar_correct ? 'Grammar Correct! Great job.' : 'Grammar mistakes detected. Review details below.'}</p>
-                  </div>
-                </div>
-
-                <div className="feedback-list" style={{ marginTop: '0.5rem' }}>
-                  <div style={{ color: '#10b981' }}><strong>Expected:</strong> "{grammarResult.expected_sentence}"</div>
-                  <div style={{ color: '#ec4899' }}><strong>You Spoke:</strong> "{grammarResult.spoken_sentence}"</div>
-                </div>
-
-                {grammarResult.feedback?.length > 0 && (
-                  <div className="feedback-list">
-                    <strong>AI Advice:</strong>
-                    {grammarResult.feedback.map((fbText, i) => <div key={i}>• {fbText}</div>)}
-                  </div>
-                )}
-
-                {grammarResult.mistakes?.length > 0 && (
-                  <div className="mistake-panel">
-                    <h2>Identified Mistakes</h2>
-                    {grammarResult.mistakes.map((mis, i) => (
-                      <article key={i}>
-                        <strong style={{ color: '#f43f5e' }}>{mis.type || 'Error'}</strong>
-                        <span>"{mis.wrong_part}" → "{mis.correct_part}"</span>
-                        <p>{mis.tip}</p>
-                      </article>
+                  <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
+                    {[['daily','Daily'],['placement','Placement'],['college','College'],['finance','Finance']].map(([key, label]) => (
+                      <button key={key} type="button"
+                        className={`tool-tab ${interviewTopic === key ? 'tool-tab--active' : ''}`}
+                        onClick={() => setInterviewTopic(key)}
+                      >{label}</button>
                     ))}
                   </div>
-                )}
 
-                <button className="primary-action" type="button" onClick={loadNextGrammar} style={{ width: '100%', justifyContent: 'center' }}>
-                  Next Challenge →
+                  {interviewLoading && (
+                    <div className="target-card" style={{ textAlign: 'center', color: '#94a3b8' }}>Loading question...</div>
+                  )}
+                  {interviewQuestion && !interviewLoading && (
+                    <div className="target-card">
+                      <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>Question</span>
+                      <p style={{ fontSize: '1.3rem', marginTop: '0.6rem', marginBottom: '0.2rem' }}>{interviewQuestion.english}</p>
+                      <small style={{ color: '#94a3b8' }}>{interviewQuestion.hindi}</small>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+                    <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
+                      disabled={interviewLoading || status === 'recording'}>
+                      🔄 New Question
+                    </button>
+                    <button
+                      className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
+                      type="button"
+                      style={{ flex: 1, height: '48px', borderRadius: '999px' }}
+                      onClick={() => handleRecord('interview')}
+                      disabled={!interviewQuestion || interviewLoading}
+                    >
+                      {status === 'recording' ? '⏹ Stop' : status === 'processing' ? '⏳ Analyzing...' : '🎙️ Answer'}
+                    </button>
+                  </div>
+
+                  {error && <div className="error-box">{error}</div>}
+
+                  {interviewResult && (
+                    <div style={{ display: 'grid', gap: '1rem', marginTop: '1.2rem' }}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '80px 1fr', gap: '1rem',
+                        background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)',
+                        borderRadius: '14px', padding: '1.2rem'
+                      }}>
+                        <div style={{ display: 'grid', placeItems: 'center' }}>
+                          <div style={{
+                            width: '64px', height: '64px', borderRadius: '50%',
+                            background: interviewResult.score >= 7 ? 'rgba(16,185,129,0.15)' : interviewResult.score >= 5 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+                            border: `3px solid ${interviewResult.score >= 7 ? '#10b981' : interviewResult.score >= 5 ? '#f59e0b' : '#ef4444'}`,
+                            display: 'grid', placeItems: 'center'
+                          }}>
+                            <strong style={{ fontSize: '1.4rem' }}>{interviewResult.score}/10</strong>
+                          </div>
+                        </div>
+                        <div>
+                          <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: '0 0 0.3rem' }}>YOUR ANSWER IN ENGLISH</p>
+                          <p style={{ margin: 0, fontSize: '1rem' }}>{interviewResult.translation}</p>
+                          {interviewResult.audio && (
+                            <button className="speaker-btn" type="button"
+                              onClick={() => playAudioBase64(interviewResult.audio)}
+                              style={{ marginTop: '0.5rem' }} title="Listen">🔊</button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{
+                        background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)',
+                        borderRadius: '12px', padding: '1rem'
+                      }}>
+                        <p style={{ color: '#10b981', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>✅ STRENGTHS</p>
+                        <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                          {(interviewResult.strengths || []).map((s, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{s}</li>)}
+                        </ul>
+                      </div>
+
+                      <div style={{
+                        background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
+                        borderRadius: '12px', padding: '1rem'
+                      }}>
+                        <p style={{ color: '#f59e0b', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>⚠️ IMPROVE</p>
+                        <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+                          {(interviewResult.missing || []).map((m, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{m}</li>)}
+                        </ul>
+                      </div>
+
+                      {interviewResult.better_answer && (
+                        <div style={{
+                          background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)',
+                          borderRadius: '12px', padding: '1rem'
+                        }}>
+                          <p style={{ color: '#8b5cf6', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>💡 BETTER ANSWER</p>
+                          <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.6 }}>{interviewResult.better_answer}</p>
+                        </div>
+                      )}
+
+                      <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
+                        style={{ marginTop: '0.25rem' }}>🔄 Try Another Question</button>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* 3. GRAMMAR SECTION */}
+        {screen === 'grammar' && (
+          <div key="grammar" className="animated-section" style={{ flex: 1 }}>
+            <section className="practice-panel">
+              <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
+                ← Back to Quest Map
+              </button>
+              <p className="eyebrow">AI Grammar Quest</p>
+              <h1>AI Grammar Coach</h1>
+
+              <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
+                {['easy', 'medium', 'hard'].map((levelKey) => (
+                  <button 
+                    className={`tool-tab ${grammarLevel === levelKey ? 'tool-tab--active' : ''}`} 
+                    key={levelKey} 
+                    type="button" 
+                    onClick={() => setGrammarLevel(levelKey)}
+                  >
+                    {levelKey.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
+              {grammarLoading && <div className="error-box" style={{ background: 'transparent' }}>Loading sentence...</div>}
+              
+              {grammarSentence && !grammarLoading && (
+                <div className="target-card">
+                  <span className="scenario-badge">{grammarSentence.scenario}</span>
+                  <p style={{ fontSize: '1.6rem', color: '#f43f5e', marginTop: '1.2rem' }}>
+                    ❌ "{grammarSentence.wrong}"
+                  </p>
+                  <small style={{ display: 'block', marginTop: '0.5rem' }}>
+                    Speak the grammatically corrected version of this sentence.
+                  </small>
+                </div>
+              )}
+
+              <div className="practice-actions">
+                <button 
+                  className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
+                  type="button" 
+                  onClick={() => handleRecord('grammar')}
+                  disabled={grammarLoading}
+                >
+                  {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
                 </button>
               </div>
-            )}
-          </section>
+
+              {error && <div className="error-box">{error}</div>}
+
+              {grammarResult && (
+                <div className="score-layout" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '1.2rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <div className={`score-orb ${grammarResult.grammar_correct ? 'score-orb--pass' : 'score-orb--retry'}`}>
+                      <strong>{grammarResult.score}</strong>
+                      <span>Score</span>
+                    </div>
+                    <div>
+                      <h1>Grade: {grammarResult.grade || 'N/A'}</h1>
+                      <p>{grammarResult.grammar_correct ? 'Grammar Correct! Great job.' : 'Grammar mistakes detected. Review details below.'}</p>
+                    </div>
+                  </div>
+
+                  <div className="feedback-list" style={{ marginTop: '0.5rem' }}>
+                    <div style={{ color: '#10b981' }}><strong>Expected:</strong> "{grammarResult.expected_sentence}"</div>
+                    <div style={{ color: '#ec4899' }}><strong>You Spoke:</strong> "{grammarResult.spoken_sentence}"</div>
+                  </div>
+
+                  {grammarResult.feedback?.length > 0 && (
+                    <div className="feedback-list">
+                      <strong>AI Suggestions:</strong>
+                      <ul>
+                        {grammarResult.feedback.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <button className="primary-action" type="button" onClick={loadNextGrammar} style={{ width: '100%', justifyContent: 'center' }}>
+                    Next Challenge →
+                  </button>
+                </div>
+              )}
+            </section>
+          </div>
         )}
       </main>
     </div>
   );
 }
 
-function AuthScreen({ onSubmit }) {
+// ── AUTHENTICATION SCREEN WITH LIBRARY ID + SUPABASE / LOCAL ────────────────────
+function AuthScreen({ onAuthSuccess }) {
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState('👨‍🎓');
+
+  const AVATARS = ['👨‍🎓', '👩‍💻', '🚀', '👑', '🎯', '⚡'];
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+
+    const formData = new FormData(event.currentTarget);
+    const libraryId = formData.get('libraryId');
+    const password = formData.get('password');
+    const name = formData.get('name');
+    const branch = formData.get('branch');
+
+    try {
+      let loggedUser;
+      if (authMode === 'register') {
+        loggedUser = await signUpUser({
+          name,
+          libraryId,
+          branch,
+          password,
+          avatar: selectedAvatar
+        });
+      } else {
+        loggedUser = await signInUser({
+          libraryId,
+          password
+        });
+      }
+      onAuthSuccess(loggedUser);
+    } catch (err) {
+      setAuthError(err.message || 'Authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
   return (
     <main className="auth-shell">
       <section className="auth-panel">
         <div style={{ textAlign: 'center' }}>
           <span className="brand-mark" style={{ margin: '0 auto 1rem auto' }}>S</span>
           <h1>Sapphire Speech Coach</h1>
-          <p>AI-powered speaking, clarity training, and grammar feedback for confident English communication.</p>
+          <p>Sign in with your College Library ID & Password for personal AI pronunciation coaching.</p>
         </div>
-        <form className="auth-form" onSubmit={onSubmit}>
+
+        {/* Auth mode toggle */}
+        <div className="tool-tabs" style={{ justifyContent: 'center', marginBottom: '0.8rem' }}>
+          <button
+            type="button"
+            className={`tool-tab ${authMode === 'login' ? 'tool-tab--active' : ''}`}
+            onClick={() => { setAuthMode('login'); setAuthError(''); }}
+          >
+            🔐 Student Login
+          </button>
+          <button
+            type="button"
+            className={`tool-tab ${authMode === 'register' ? 'tool-tab--active' : ''}`}
+            onClick={() => { setAuthMode('register'); setAuthError(''); }}
+          >
+            📝 Register ID
+          </button>
+        </div>
+
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {authMode === 'register' && (
+            <>
+              <label>
+                Full Name
+                <input name="name" minLength="2" placeholder="Arpit Agarwal" required />
+              </label>
+
+              <label>
+                Branch
+                <select name="branch" style={{
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)',
+                  color: '#fff', padding: '0.8rem', borderRadius: '12px', width: '100%'
+                }} required>
+                  <option value="CSE-AIML" style={{ background: '#0d1127' }}>CSE - AI & ML</option>
+                  <option value="CSE" style={{ background: '#0d1127' }}>Computer Science (CSE)</option>
+                  <option value="ECE" style={{ background: '#0d1127' }}>Electronics (ECE)</option>
+                  <option value="IT" style={{ background: '#0d1127' }}>Information Technology (IT)</option>
+                  <option value="ME" style={{ background: '#0d1127' }}>Mechanical (ME)</option>
+                  <option value="CIVIL" style={{ background: '#0d1127' }}>Civil Engineering</option>
+                  <option value="OTHER" style={{ background: '#0d1127' }}>Other Branch</option>
+                </select>
+              </label>
+
+              <div>
+                <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600 }}>Choose Avatar</span>
+                <div className="avatar-selector-row">
+                  {AVATARS.map((av) => (
+                    <button
+                      key={av}
+                      type="button"
+                      className={`avatar-btn ${selectedAvatar === av ? 'avatar-btn--selected' : ''}`}
+                      onClick={() => setSelectedAvatar(av)}
+                    >
+                      {av}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
           <label>
-            Full Name
-            <input name="name" minLength="2" placeholder="Arpit Agarwal" required />
+            College Library ID
+            <input 
+              name="libraryId" 
+              placeholder="Ex: 2428CSEAIML994" 
+              required 
+              style={{ textTransform: 'uppercase' }}
+            />
+            <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Format: Alphanumeric College ID</small>
           </label>
+
           <label>
-            Mobile Number
-            <input name="mobile" placeholder="9876543210" required />
+            Password
+            <input 
+              name="password" 
+              type="password" 
+              placeholder="••••••••" 
+              minLength="6" 
+              required 
+            />
           </label>
-          <label>
-            City
-            <input name="city" placeholder="Jaipur" />
-          </label>
-          <button className="primary-action" type="submit" style={{ width: '100%', justifyContent: 'center' }}>
-            Enter Quest Map
+
+          {authError && <div className="error-box">{authError}</div>}
+
+          <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center' }}>
+            {authLoading ? 'Signing in...' : authMode === 'register' ? 'Register & Begin Quest' : 'Login to Quest Map'}
           </button>
         </form>
       </section>
     </main>
+  );
+}
+
+// ── PROFILE MODAL COMPONENT ───────────────────────────────────────────────────
+function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onSignOut }) {
+  // Rank calculations
+  const totalScoreSum = Object.values(progress.completed || {}).reduce((acc, curr) => acc + (curr.bestScore || 0), 0);
+  const avgScore = completedCount > 0 ? Math.round(totalScoreSum / completedCount) : 0;
+  
+  let rankName = "Bronze Speaker";
+  let rankColor = "#cd7f32";
+  if (completedCount >= 40 || progress.xp >= 1000) { rankName = "Diamond Orator 👑"; rankColor = "#38bdf8"; }
+  else if (completedCount >= 20 || progress.xp >= 500) { rankName = "Gold Master 🥇"; rankColor = "#f59e0b"; }
+  else if (completedCount >= 5 || progress.xp >= 150) { rankName = "Silver Speaker 🥈"; rankColor = "#94a3b8"; }
+
+  // AI 1-Sentence Summary Feedback
+  let aiFeedbackSentence = "Practice targets daily to record your weak phonemes and boost speaking fluency!";
+  if (weakSounds.length > 0) {
+    aiFeedbackSentence = `Focus on refining your '${weakSounds.join(', ')}' sound transitions in your next practice session.`;
+  } else if (avgScore >= 80) {
+    aiFeedbackSentence = `Outstanding pronunciation clarity! Keep practicing advanced sentences in Stage 4 & 5 to maintain Gold rank.`;
+  } else if (completedCount > 0) {
+    aiFeedbackSentence = `Great progress! Aim for 70%+ score on unlocked levels to progress through all 5 difficulty stages.`;
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()}>
+        <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
+        
+        <div className="profile-avatar-large">
+          {user?.avatar || '👨‍🎓'}
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.4rem' }}>{user?.name || 'Student'}</h2>
+          <div className="profile-badge-row" style={{ marginTop: '0.5rem' }}>
+            <span className="profile-badge profile-badge--id">ID: {user?.libraryId || '2428CSEAIML994'}</span>
+            <span className="profile-badge profile-badge--branch">Branch: {user?.branch || 'CSE-AIML'}</span>
+          </div>
+        </div>
+
+        {/* SPEAKING RANK & SCORE LEVEL */}
+        <div style={{
+          background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-glass)',
+          borderRadius: '14px', padding: '1rem', textAlign: 'center'
+        }}>
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Speaking Rank & Status</span>
+          <h3 style={{ margin: '0.3rem 0 0.2rem 0', color: rankColor, fontSize: '1.2rem' }}>{rankName}</h3>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1' }}>
+            {completedCount}/100 Passed • {progress.xp} XP • Avg Accuracy: <strong>{avgScore}%</strong>
+          </p>
+        </div>
+
+        {/* AI COACH 1-SENTENCE FEEDBACK */}
+        <div style={{
+          background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)',
+          borderRadius: '14px', padding: '1rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#818cf8', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.3rem' }}>
+            <span>🤖 AI Coach Note:</span>
+          </div>
+          <p style={{ margin: 0, color: '#e2e8f0', fontSize: '0.88rem', lineHeight: 1.4 }}>
+            "{aiFeedbackSentence}"
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.4rem' }}>
+          <button className="secondary-action" type="button" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>
+            Back to App
+          </button>
+          <button className="primary-action" type="button" onClick={onSignOut} style={{ background: '#ef4444', color: '#fff', justifyContent: 'center' }}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -897,14 +1093,12 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
   const strokeDasharray = 2 * Math.PI * radius;
   const strokeDashoffset = strokeDasharray * (1 - currentScore / 100);
 
-  // Group wrong/close/missing/extra elements from alignment
   const wrongItems = data.sound_level_comparison?.filter(item => item.type === "wrong" || item.type === "close") || [];
   const missingItems = data.sound_level_comparison?.filter(item => item.type === "missing") || [];
   const extraItems = data.sound_level_comparison?.filter(item => item.type === "extra") || [];
 
   return (
     <div className="result-panel">
-      {/* SVG Score Circle */}
       <div className="score-circle-container">
         <svg className="score-ring" width="160" height="160">
           <circle
@@ -936,7 +1130,6 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
         </div>
       </div>
 
-      {/* Passed/Keep Practicing Badge */}
       <div className="score-badge-container">
         {result.passed ? (
           <span className="score-badge score-badge--passed">🎉 Passed</span>
@@ -945,43 +1138,24 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
         )}
       </div>
 
-      {/* Phoneme Breakdown Section */}
       {data.sound_level_comparison?.length > 0 && (
         <div className="result-section">
           <h2 className="section-title">
             <span className="section-title-icon">🔤</span> PHONEME BREAKDOWN
           </h2>
-          <div className="phoneme-breakdown-grid">
-            {data.sound_level_comparison.map((item, index) => {
-              let cardClass = "";
-              let icon = "";
-              let midVal = "";
-              let botVal = "";
-
-              if (item.type === "correct" || item.type === "accent_match") {
-                cardClass = "phoneme-card--correct";
-                icon = "✓";
-                midVal = item.expected;
-              } else if (item.type === "wrong" || item.type === "close") {
-                cardClass = "phoneme-card--wrong";
-                icon = "✗";
-                midVal = item.expected;
-                botVal = item.spoken;
-              } else if (item.type === "missing") {
-                cardClass = "phoneme-card--missing";
-                icon = "?";
-                midVal = item.expected;
-              } else if (item.type === "extra") {
-                cardClass = "phoneme-card--extra";
-                icon = "+";
-                midVal = item.spoken;
-              }
-
+          <div className="phonemes-container">
+            {data.sound_level_comparison.map((item, idx) => {
+              const statusClass = item.type === "correct" ? "sound-pill--correct"
+                : item.type === "accent_match" ? "sound-pill--accent_match"
+                : item.type === "close" ? "sound-pill--close"
+                : "sound-pill--wrong";
               return (
-                <div key={index} className={`phoneme-card ${cardClass}`}>
-                  <span className="phoneme-card-icon">{icon}</span>
-                  <span className="phoneme-card-expected">{midVal || "-"}</span>
-                  {botVal && <span className="phoneme-card-spoken">{botVal}</span>}
+                <div key={idx} className={`sound-pill ${statusClass}`} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>{item.type === 'missing' ? 'x' : item.type === 'extra' ? '+' : item.type === 'accent_match' ? '≈' : item.type === 'correct' ? '✓' : '?'}</div>
+                  <strong>{item.expected || item.spoken}</strong>
+                  {item.spoken && item.spoken !== item.expected && (
+                    <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>{item.spoken}</div>
+                  )}
                 </div>
               );
             })}
@@ -989,20 +1163,16 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
         </div>
       )}
 
-      {/* Feedback & Corrections Section */}
       <div className="result-section">
         <h2 className="section-title">
           <span className="section-title-icon">💬</span> FEEDBACK & CORRECTIONS
         </h2>
         <div className="feedback-alerts-container">
-
-          {/* Main Coach Feedback Alert */}
           <div className="feedback-alert-card feedback-alert-card--info">
             <span className="feedback-alert-icon">ℹ️</span>
             <p>{data.ai_summary || (result.passed ? "Excellent! All sounds matched target parameters." : "Fair attempt. Keep practicing the highlighted sounds.")}</p>
           </div>
 
-          {/* Audio Quality warnings */}
           {data.audio_quality_warning && (
             <div className="feedback-alert-card feedback-alert-card--warning">
               <span className="feedback-alert-icon">⚠️</span>
@@ -1010,7 +1180,6 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
             </div>
           )}
 
-          {/* Dynamic Wrong/Close sounds corrections */}
           {wrongItems.map((item, idx) => (
             <div key={idx} className="feedback-alert-card feedback-alert-card--info">
               <span className="feedback-alert-icon">ℹ️</span>
@@ -1018,18 +1187,15 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
             </div>
           ))}
 
-          {/* Missing sounds corrections */}
           {missingItems.length > 0 && (
-            <div className="feedback-alert-card feedback-alert-card--warning">
-              <span className="feedback-alert-icon">⚠️</span>
+            <div className="feedback-alert-card feedback-alert-card--info">
+              <span className="feedback-alert-icon">ℹ️</span>
               <p>
-                You missed {missingItems.length} sound(s):{" "}
-                {missingItems.map(item => item.expected).join(", ")}
+                {missingItems.length} sound(s) missing — try to pronounce every sound completely.
               </p>
             </div>
           )}
 
-          {/* Extra sounds corrections */}
           {extraItems.length > 0 && (
             <div className="feedback-alert-card feedback-alert-card--info">
               <span className="feedback-alert-icon">ℹ️</span>
@@ -1041,7 +1207,6 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
         </div>
       </div>
 
-      {/* How to Improve Section */}
       <div className="result-section">
         <h2 className="section-title">
           <span className="section-title-icon">🎯</span> HOW TO IMPROVE
@@ -1068,7 +1233,6 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
             </div>
           ))}
 
-          {/* Standard pass recommendation */}
           {wrongItems.length === 0 && missingItems.length === 0 && extraItems.length === 0 && (
             <div className="improve-card">
               <span className="improve-icon">💡</span>
@@ -1078,7 +1242,6 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
         </div>
       </div>
 
-      {/* Buttons */}
       <div className="practice-actions" style={{ marginTop: '1rem' }}>
         <button className="secondary-action" type="button" onClick={onRetry}>
           Practice Again
