@@ -23,5 +23,5 @@ export function validateLibraryId(libraryId) {
 // Convert Library ID to a valid email format for Supabase auth
 export function libraryIdToEmail(libraryId) {
   const clean = (libraryId || '').trim().toLowerCase();
-  return `${clean}@student.college.edu`;
+  return `${clean}@speechcoach.com`;
 }
