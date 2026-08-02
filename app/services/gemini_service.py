@@ -9,18 +9,12 @@ from google import genai
 
 load_dotenv()
 
-_client = None
+DEFAULT_GEMINI_KEY = "AQ.Ab8RN6Ia4MLJSMTcSmScnL-TL2l3q6QZ9aaAvCRv-OvxKsCMsQ"
 
 def get_client():
     global _client
-    if _client is None:
-        api_key = os.getenv("API") or os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Gemini API Key is missing. Please add it to your Hugging Face Space secrets under the name 'API'."
-            )
-        _client = genai.Client(api_key=api_key)
-    return _client
+    api_key = os.getenv("API") or os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_KEY") or os.getenv("GOOGLE_API_KEY") or DEFAULT_GEMINI_KEY
+    return genai.Client(api_key=api_key)
 
 
 # ── Simple translation (used for non-interview generic translate) ───────────────
@@ -45,7 +39,7 @@ def translate_to_english(text: str) -> str:
     """Simple Hindi → English translation (no question context)."""
     client = get_client()
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-flash-latest",
         contents=f"{_SIMPLE_PROMPT}\n\nTranscript:\n{text}"
     )
     return response.text.strip()
@@ -94,7 +88,7 @@ Output JSON only."""
 
     client = get_client()
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-flash-latest",
         contents=prompt,
     )
 

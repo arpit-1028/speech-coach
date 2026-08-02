@@ -15,10 +15,10 @@ SCENARIOS = {
 }
 
 
+DEFAULT_GEMINI_KEY = "AQ.Ab8RN6Ia4MLJSMTcSmScnL-TL2l3q6QZ9aaAvCRv-OvxKsCMsQ"
+
 def _get_client():
-    api_key = os.getenv("API") or os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("Gemini API key is missing. Set it as 'API' in your environment.")
+    api_key = os.getenv("API") or os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_KEY") or os.getenv("GOOGLE_API_KEY") or DEFAULT_GEMINI_KEY
     return genai.Client(api_key=api_key)
 
 
@@ -29,13 +29,7 @@ def generate_scenario(topic: str) -> dict:
     """
     scenario_label = SCENARIOS.get(topic.lower(), "Daily Conversation")
 
-    prompt = f"""You are an AI English speaking coach.
-
-Generate ONE realistic speaking practice question.
-
-Scenario: {scenario_label}
-
-The student will answer in Hindi or Hinglish.
+    prompt = f"""Generate ONE realistic interview or daily speaking practice question for the topic: {scenario_label}.
 
 Return ONLY valid JSON. No markdown. No explanation.
 
@@ -53,7 +47,7 @@ Rules:
 
     client = _get_client()
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-flash-latest",
         contents=prompt,
     )
 

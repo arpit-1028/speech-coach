@@ -57,15 +57,18 @@ Return ONLY valid JSON.
 }}
 """
 
+DEFAULT_GEMINI_KEY = "AQ.Ab8RN6Ia4MLJSMTcSmScnL-TL2l3q6QZ9aaAvCRv-OvxKsCMsQ"
+
 def check_grammar(correct, spoken):
-    client = get_client()
+    api_key = os.getenv("API") or os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_KEY") or os.getenv("GOOGLE_API_KEY") or DEFAULT_GEMINI_KEY
+    client = genai.Client(api_key=api_key)
     prompt = PROMPT.format(
         correct=correct,
         spoken=spoken,
     )
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-flash-latest",
         contents=prompt
     )
 
