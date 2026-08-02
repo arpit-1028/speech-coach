@@ -1149,12 +1149,24 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
                 : item.type === "accent_match" ? "sound-pill--accent_match"
                 : item.type === "close" ? "sound-pill--close"
                 : "sound-pill--wrong";
+              
+              const exp = humanizePhoneme(item.expected);
+              const spk = humanizePhoneme(item.spoken);
+
               return (
-                <div key={idx} className={`sound-pill ${statusClass}`} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>{item.type === 'missing' ? 'x' : item.type === 'extra' ? '+' : item.type === 'accent_match' ? '≈' : item.type === 'correct' ? '✓' : '?'}</div>
-                  <strong>{item.expected || item.spoken}</strong>
-                  {item.spoken && item.spoken !== item.expected && (
-                    <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>{item.spoken}</div>
+                <div key={idx} className={`sound-pill ${statusClass}`} style={{ textAlign: 'center', minWidth: '70px', padding: '0.5rem 0.8rem' }}>
+                  <div style={{ fontSize: '0.7rem', opacity: 0.75, fontWeight: 800 }}>
+                    {item.type === 'missing' ? 'x Missing' : item.type === 'extra' ? '+ Extra' : item.type === 'accent_match' ? '≈ Accepted' : item.type === 'correct' ? '✓ Clear' : '⚠ Check'}
+                  </div>
+                  
+                  <strong style={{ fontSize: '1.15rem', display: 'block', marginTop: '0.2rem', color: '#fff' }}>
+                    {exp.main || spk.main} <span style={{ fontSize: '0.85rem', color: '#38bdf8', fontWeight: 600 }}>{exp.sub || spk.sub}</span>
+                  </strong>
+                  
+                  {spk.main && exp.main && spk.main !== exp.main && (
+                    <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem', color: '#f43f5e' }}>
+                      Heard: {spk.main} {spk.sub}
+                    </div>
                   )}
                 </div>
               );
@@ -1180,12 +1192,16 @@ function ResultScreen({ result, activeLevel, onRetry, onMap }) {
             </div>
           )}
 
-          {wrongItems.map((item, idx) => (
-            <div key={idx} className="feedback-alert-card feedback-alert-card--info">
-              <span className="feedback-alert-icon">ℹ️</span>
-              <p>Focus on: "{item.expected}" → you said "{item.spoken}"</p>
-            </div>
-          ))}
+          {wrongItems.map((item, idx) => {
+            const exp = humanizePhoneme(item.expected);
+            const spk = humanizePhoneme(item.spoken);
+            return (
+              <div key={idx} className="feedback-alert-card feedback-alert-card--info">
+                <span className="feedback-alert-icon">ℹ️</span>
+                <p>Focus on target sound: <strong>{exp.main} {exp.sub}</strong> → you said <strong>"{spk.main} {spk.sub}"</strong></p>
+              </div>
+            );
+          })}
 
           {missingItems.length > 0 && (
             <div className="feedback-alert-card feedback-alert-card--info">
@@ -1273,11 +1289,89 @@ function getWeakSounds(attempts) {
   const counts = {};
   attempts.forEach((attempt) => {
     (attempt.weakSounds || []).forEach((sound) => {
-      counts[sound] = (counts[sound] || 0) + 1;
+      const h = humanizePhoneme(sound).main;
+      if (h) counts[h] = (counts[h] || 0) + 1;
     });
   });
   return Object.entries(counts)
     .sort((left, right) => right[1] - left[1])
     .slice(0, 3)
     .map(([sound]) => sound);
+}
+
+// ── IPA TO FRIENDLY ENGLISH + HINDI PHONEME HUMANIZER ─────────────────────────
+const PHONEME_HUMAN_MAP = {
+  'θ': { sound: 'TH', hindi: 'थ', hint: "unvoiced 'th' as in think" },
+  'ð': { sound: 'TH', hindi: 'ध', hint: "voiced 'th' as in mother" },
+  'ʃ': { sound: 'SH', hindi: 'श', hint: "sh sound as in ship" },
+  'tʃ': { sound: 'CH', hindi: 'च', hint: "ch sound as in chair" },
+  'dʒ': { sound: 'J', hindi: 'ज', hint: "j sound as in job" },
+  'ŋ': { sound: 'NG', hindi: 'ङ', hint: "ng sound as in sing" },
+  'ʒ': { sound: 'ZH', hindi: 'झ', hint: "zh sound as in vision" },
+  'v': { sound: 'V', hindi: 'व', hint: "v sound" },
+  'w': { sound: 'W', hindi: 'व', hint: "w sound" },
+  'r': { sound: 'R', hindi: 'र', hint: "r sound" },
+  'ɹ': { sound: 'R', hindi: 'र', hint: "r sound" },
+  'ɾ': { sound: 'R', hindi: 'र', hint: "r sound" },
+  'p': { sound: 'P', hindi: 'प', hint: "p sound" },
+  'b': { sound: 'B', hindi: 'ब', hint: "b sound" },
+  't': { sound: 'T', hindi: 'त/ट', hint: "t sound" },
+  'd': { sound: 'D', hindi: 'द/ड', hint: "d sound" },
+  'k': { sound: 'K', hindi: 'क', hint: "k sound" },
+  'g': { sound: 'G', hindi: 'ग', hint: "g sound" },
+  'f': { sound: 'F', hindi: 'फ़', hint: "f sound" },
+  's': { sound: 'S', hindi: 'स', hint: "s sound" },
+  'z': { sound: 'Z', hindi: 'ज़', hint: "z sound" },
+  'm': { sound: 'M', hindi: 'म', hint: "m sound" },
+  'n': { sound: 'N', hindi: 'न', hint: "n sound" },
+  'l': { sound: 'L', hindi: 'ल', hint: "l sound" },
+  'h': { sound: 'H', hindi: 'ह', hint: "h sound" },
+  'j': { sound: 'Y', hindi: 'य', hint: "y sound" },
+  '3:r': { sound: 'ER', hindi: 'अर्', hint: "er sound as in bird" },
+  'ɜːr': { sound: 'ER', hindi: 'अर्', hint: "er sound as in bird" },
+  'ɜː': { sound: 'ER', hindi: 'अर्', hint: "er sound as in bird" },
+  'ɑ:': { sound: 'AH', hindi: 'आ', hint: "long ah sound as in car" },
+  'ɑ': { sound: 'AH', hindi: 'आ', hint: "ah sound" },
+  'æ': { sound: 'AE', hindi: 'ऐ', hint: "short a sound as in cat" },
+  'ʌ': { sound: 'UH', hindi: 'अ', hint: "short u sound as in sun" },
+  'ə': { sound: 'AH', hindi: 'अ', hint: "schwa sound" },
+  'ɛ': { sound: 'EH', hindi: 'ए', hint: "short e sound as in bed" },
+  'e': { sound: 'EH', hindi: 'ए', hint: "short e sound" },
+  'ɪ': { sound: 'IH', hindi: 'इ', hint: "short i sound as in sit" },
+  'i': { sound: 'IH', hindi: 'इ', hint: "i sound" },
+  'iː': { sound: 'EE', hindi: 'ई', hint: "long ee sound as in see" },
+  'i:': { sound: 'EE', hindi: 'ई', hint: "long ee sound as in see" },
+  'ʊ': { sound: 'OO', hindi: 'उ', hint: "short oo sound as in book" },
+  'u': { sound: 'OO', hindi: 'उ', hint: "oo sound" },
+  'uː': { sound: 'OO', hindi: 'ऊ', hint: "long oo sound as in moon" },
+  'u:': { sound: 'OO', hindi: 'ऊ', hint: "long oo sound as in moon" },
+  'ɔː': { sound: 'AW', hindi: 'ऑ', hint: "aw sound as in ball" },
+  'ɔ:': { sound: 'AW', hindi: 'ऑ', hint: "aw sound as in ball" },
+  'ɔ': { sound: 'AW', hindi: 'ऑ', hint: "aw sound" },
+  'oʊ': { sound: 'OH', hindi: 'ओ', hint: "oh sound as in go" },
+  'əʊ': { sound: 'OH', hindi: 'ओ', hint: "oh sound as in go" },
+  'eɪ': { sound: 'AY', hindi: 'ए', hint: "ay sound as in day" },
+  'aɪ': { sound: 'AI', hindi: 'आइ', hint: "ai sound as in my" },
+  'aʊ': { sound: 'OW', hindi: 'आउ', hint: "ow sound as in now" },
+  'ɔɪ': { sound: 'OY', hindi: 'ओइ', hint: "oy sound as in boy" },
+};
+
+function humanizePhoneme(symbol) {
+  if (!symbol) return { main: '', sub: '', hint: '' };
+  const clean = String(symbol).trim().toLowerCase();
+  
+  if (PHONEME_HUMAN_MAP[clean]) {
+    const item = PHONEME_HUMAN_MAP[clean];
+    return {
+      main: item.sound,
+      sub: `(${item.hindi})`,
+      hint: item.hint
+    };
+  }
+  
+  return {
+    main: clean.toUpperCase(),
+    sub: '',
+    hint: ''
+  };
 }
