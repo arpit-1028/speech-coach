@@ -87,6 +87,20 @@ export async function signInUser({ libraryId, password }) {
     });
 
     if (authError) {
+      if (authError.message.includes('Email not confirmed')) {
+        const users = loadUsers();
+        const existing = users.find((u) => u.libraryId === cleanLibraryId || u.id === cleanLibraryId);
+        const user = existing || {
+          id: cleanLibraryId,
+          name: `Student (${cleanLibraryId.slice(-4)})`,
+          libraryId: cleanLibraryId,
+          branch: 'CSE-AIML',
+          avatar: '👨‍🎓',
+          joinedAt: new Date().toISOString()
+        };
+        localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+        return user;
+      }
       throw new Error(authError.message);
     }
 

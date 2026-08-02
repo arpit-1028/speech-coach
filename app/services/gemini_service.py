@@ -45,7 +45,7 @@ def translate_to_english(text: str) -> str:
     """Simple Hindi → English translation (no question context)."""
     client = get_client()
     response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
+        model="gemini-2.0-flash",
         contents=f"{_SIMPLE_PROMPT}\n\nTranscript:\n{text}"
     )
     return response.text.strip()
@@ -94,7 +94,7 @@ Output JSON only."""
 
     client = get_client()
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-2.0-flash",
         contents=prompt,
     )
 
