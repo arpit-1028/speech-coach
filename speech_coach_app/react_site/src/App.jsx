@@ -10,7 +10,7 @@ import {
   translateInterview
 } from './api.js';
 import { AudioRecorder } from './audio.js';
-import { loadSession, signInUser, signUpUser, signOutUser } from './auth.js';
+import { loadSession, signInUser, signUpUser, signOutUser, requestPasswordReset } from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
 
@@ -838,8 +838,9 @@ export default function App() {
 
 // ── AUTHENTICATION SCREEN WITH LIBRARY ID + SUPABASE / LOCAL ────────────────────
 function AuthScreen({ onAuthSuccess }) {
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot'
   const [authError, setAuthError] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState('👨‍🎓');
 
@@ -848,31 +849,37 @@ function AuthScreen({ onAuthSuccess }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setAuthError('');
+    setResetMsg('');
     setAuthLoading(true);
 
     const formData = new FormData(event.currentTarget);
     const libraryId = formData.get('libraryId');
+    const email = formData.get('email');
     const password = formData.get('password');
     const name = formData.get('name');
     const branch = formData.get('branch');
 
     try {
-      let loggedUser;
-      if (authMode === 'register') {
-        loggedUser = await signUpUser({
+      if (authMode === 'forgot') {
+        const targetEmail = await requestPasswordReset(libraryId || email);
+        setResetMsg(`Password reset link/OTP sent to your college email (${targetEmail}). Check your inbox!`);
+      } else if (authMode === 'register') {
+        const loggedUser = await signUpUser({
           name,
+          email,
           libraryId,
           branch,
           password,
           avatar: selectedAvatar
         });
+        onAuthSuccess(loggedUser);
       } else {
-        loggedUser = await signInUser({
+        const loggedUser = await signInUser({
           libraryId,
           password
         });
+        onAuthSuccess(loggedUser);
       }
-      onAuthSuccess(loggedUser);
     } catch (err) {
       setAuthError(err.message || 'Authentication failed.');
     } finally {
@@ -894,14 +901,14 @@ function AuthScreen({ onAuthSuccess }) {
           <button
             type="button"
             className={`tool-tab ${authMode === 'login' ? 'tool-tab--active' : ''}`}
-            onClick={() => { setAuthMode('login'); setAuthError(''); }}
+            onClick={() => { setAuthMode('login'); setAuthError(''); setResetMsg(''); }}
           >
             🔐 Student Login
           </button>
           <button
             type="button"
             className={`tool-tab ${authMode === 'register' ? 'tool-tab--active' : ''}`}
-            onClick={() => { setAuthMode('register'); setAuthError(''); }}
+            onClick={() => { setAuthMode('register'); setAuthError(''); setResetMsg(''); }}
           >
             📝 Register ID
           </button>
@@ -913,6 +920,12 @@ function AuthScreen({ onAuthSuccess }) {
               <label>
                 Full Name
                 <input name="name" minLength="2" placeholder="Arpit Agarwal" required />
+              </label>
+
+              <label>
+                College Email ID
+                <input name="email" type="email" placeholder="xyz.2428cse112@kiet.edu" required />
+                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Used for password recovery & notifications</small>
               </label>
 
               <label>
@@ -952,33 +965,70 @@ function AuthScreen({ onAuthSuccess }) {
             </>
           )}
 
-          <label>
-            College Library ID
-            <input 
-              name="libraryId" 
-              placeholder="Ex: 2428CSEAIML994" 
-              required 
-              style={{ textTransform: 'uppercase' }}
-            />
-            <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Format: Alphanumeric College ID</small>
-          </label>
+          {authMode === 'forgot' ? (
+            <label>
+              College Library ID or Email
+              <input 
+                name="libraryId" 
+                placeholder="Ex: 2428CSEAIML994 or student@kiet.edu" 
+                required 
+              />
+              <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>We will send password reset link to your college email.</small>
+            </label>
+          ) : (
+            <>
+              <label>
+                College Library ID
+                <input 
+                  name="libraryId" 
+                  placeholder="Ex: 2428CSEAIML994" 
+                  required 
+                  style={{ textTransform: 'uppercase' }}
+                />
+                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Format: Alphanumeric College ID</small>
+              </label>
 
-          <label>
-            Password
-            <input 
-              name="password" 
-              type="password" 
-              placeholder="••••••••" 
-              minLength="6" 
-              required 
-            />
-          </label>
+              <label>
+                Password
+                <input 
+                  name="password" 
+                  type="password" 
+                  placeholder="••••••••" 
+                  minLength="6" 
+                  required 
+                />
+              </label>
+
+              {authMode === 'login' && (
+                <div style={{ textAlign: 'right', marginTop: '-0.3rem', marginBottom: '0.5rem' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => { setAuthMode('forgot'); setAuthError(''); setResetMsg(''); }}
+                    style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    🔑 Forgot Password?
+                  </button>
+                </div>
+              )}
+            </>
+          )}
 
           {authError && <div className="error-box">{authError}</div>}
+          {resetMsg && <div className="success-box" style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', padding: '0.8rem', borderRadius: '10px', fontSize: '0.85rem' }}>{resetMsg}</div>}
 
-          <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center' }}>
-            {authLoading ? 'Signing in...' : authMode === 'register' ? 'Register & Begin Quest' : 'Login to Quest Map'}
+          <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}>
+            {authLoading ? 'Processing...' : authMode === 'forgot' ? '📧 Send Password Reset Link' : authMode === 'register' ? 'Register & Begin Quest' : 'Login to Quest Map'}
           </button>
+
+          {authMode === 'forgot' && (
+            <button 
+              type="button" 
+              onClick={() => { setAuthMode('login'); setAuthError(''); setResetMsg(''); }}
+              style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '0.82rem', cursor: 'pointer', marginTop: '0.8rem', width: '100%', textAlign: 'center' }}
+            >
+              ← Back to Student Login
+            </button>
+          )}
         </form>
       </section>
     </main>

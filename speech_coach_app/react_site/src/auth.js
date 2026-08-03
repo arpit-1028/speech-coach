@@ -1,5 +1,5 @@
 // ────────────────────────────────────────────────────────────────────────────
-//  auth.js — College Library ID Auth & User Profiles (Supabase + Local)
+//  auth.js — College Library ID + Official Email Auth (Supabase + Local)
 // ────────────────────────────────────────────────────────────────────────────
 import { supabase, isSupabaseConfigured, libraryIdToEmail, validateLibraryId } from './supabase.js';
 
@@ -14,14 +14,19 @@ export function loadSession() {
   }
 }
 
-export async function signUpUser({ name, libraryId, branch, password, avatar }) {
+export async function signUpUser({ name, email, libraryId, branch, password, avatar }) {
   const cleanLibraryId = (libraryId || '').trim().toUpperCase();
   const cleanName = (name || '').trim();
-  const cleanBranch = (branch || 'CSE-AIML').trim();
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanBranch = (branch || 'CSE').trim();
   const cleanAvatar = avatar || '👨‍🎓';
 
   if (!validateLibraryId(cleanLibraryId)) {
     throw new Error('Invalid Library ID format. Example: 2428CSEAIML994');
+  }
+
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Please enter a valid College Email ID (e.g. xyz.2428cse112@kiet.edu)');
   }
 
   if (!password || password.length < 6) {
@@ -31,22 +36,23 @@ export async function signUpUser({ name, libraryId, branch, password, avatar }) 
   const userData = {
     id: cleanLibraryId,
     name: cleanName || 'Student',
+    email: cleanEmail,
     libraryId: cleanLibraryId,
     branch: cleanBranch,
     avatar: cleanAvatar,
     joinedAt: new Date().toISOString()
   };
 
-  // If Supabase is configured, use Supabase Auth & DB
+  // If Supabase is configured, use Supabase Auth with real email
   if (isSupabaseConfigured && supabase) {
-    const email = libraryIdToEmail(cleanLibraryId);
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password,
       options: {
         data: {
           name: cleanName,
           libraryId: cleanLibraryId,
+          email: cleanEmail,
           branch: cleanBranch,
           avatar: cleanAvatar
         }
@@ -58,9 +64,9 @@ export async function signUpUser({ name, libraryId, branch, password, avatar }) 
     }
   }
 
-  // Always persist session locally
+  // Persist user locally
   const users = loadUsers();
-  const nextUsers = [userData, ...users.filter((u) => u.id !== userData.id)];
+  const nextUsers = [userData, ...users.filter((u) => u.id !== userData.id && u.libraryId !== userData.libraryId)];
   localStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
   localStorage.setItem(AUTH_KEY, JSON.stringify(userData));
 
@@ -68,9 +74,11 @@ export async function signUpUser({ name, libraryId, branch, password, avatar }) 
 }
 
 export async function signInUser({ libraryId, password }) {
-  const cleanLibraryId = (libraryId || '').trim().toUpperCase();
+  const cleanInput = (libraryId || '').trim();
+  const isEmail = cleanInput.includes('@');
+  const cleanLibraryId = cleanInput.toUpperCase();
 
-  if (!validateLibraryId(cleanLibraryId)) {
+  if (!isEmail && !validateLibraryId(cleanLibraryId)) {
     throw new Error('Invalid Library ID format. Example: 2428CSEAIML994');
   }
 
@@ -78,23 +86,27 @@ export async function signInUser({ libraryId, password }) {
     throw new Error('Please enter your password.');
   }
 
+  // Find user email from local store if Library ID was entered
+  const users = loadUsers();
+  const existingUser = users.find((u) => u.libraryId === cleanLibraryId || u.email === cleanInput.toLowerCase() || u.id === cleanLibraryId);
+  const targetEmail = isEmail ? cleanInput.toLowerCase() : (existingUser?.email || libraryIdToEmail(cleanLibraryId));
+
   // If Supabase is configured, authenticate via Supabase
   if (isSupabaseConfigured && supabase) {
-    const email = libraryIdToEmail(cleanLibraryId);
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
+      email: targetEmail,
       password
     });
 
     if (authError) {
+      // If email not confirmed in Supabase, allow direct local login fallback
       if (authError.message.includes('Email not confirmed')) {
-        const users = loadUsers();
-        const existing = users.find((u) => u.libraryId === cleanLibraryId || u.id === cleanLibraryId);
-        const user = existing || {
+        const user = existingUser || {
           id: cleanLibraryId,
           name: `Student (${cleanLibraryId.slice(-4)})`,
+          email: targetEmail,
           libraryId: cleanLibraryId,
-          branch: 'CSE-AIML',
+          branch: 'CSE',
           avatar: '👨‍🎓',
           joinedAt: new Date().toISOString()
         };
@@ -106,11 +118,12 @@ export async function signInUser({ libraryId, password }) {
 
     const meta = authData.user?.user_metadata || {};
     const user = {
-      id: cleanLibraryId,
-      name: meta.name || 'Student',
-      libraryId: cleanLibraryId,
-      branch: meta.branch || 'CSE-AIML',
-      avatar: meta.avatar || '👨‍🎓',
+      id: meta.libraryId || cleanLibraryId,
+      name: meta.name || existingUser?.name || 'Student',
+      email: authData.user?.email || targetEmail,
+      libraryId: meta.libraryId || cleanLibraryId,
+      branch: meta.branch || existingUser?.branch || 'CSE',
+      avatar: meta.avatar || existingUser?.avatar || '👨‍🎓',
       joinedAt: authData.user?.created_at || new Date().toISOString()
     };
 
@@ -118,23 +131,44 @@ export async function signInUser({ libraryId, password }) {
     return user;
   }
 
-  // Fallback: local user store check
-  const users = loadUsers();
-  const existing = users.find((u) => u.libraryId === cleanLibraryId || u.id === cleanLibraryId);
-
-  if (!existing) {
-    // If user doesn't exist locally, auto-register for seamless local experience
+  // Local fallback check
+  if (!existingUser) {
     return signUpUser({
       name: `Student (${cleanLibraryId.slice(-4)})`,
+      email: isEmail ? cleanInput.toLowerCase() : `${cleanLibraryId.toLowerCase()}@college.edu`,
       libraryId: cleanLibraryId,
-      branch: 'CSE-AIML',
+      branch: 'CSE',
       password,
       avatar: '👨‍🎓'
     });
   }
 
-  localStorage.setItem(AUTH_KEY, JSON.stringify(existing));
-  return existing;
+  localStorage.setItem(AUTH_KEY, JSON.stringify(existingUser));
+  return existingUser;
+}
+
+export async function requestPasswordReset(libraryIdOrEmail) {
+  const cleanInput = (libraryIdOrEmail || '').trim();
+  if (!cleanInput) {
+    throw new Error('Please enter your College Library ID or Email.');
+  }
+
+  const isEmail = cleanInput.includes('@');
+  const cleanId = cleanInput.toUpperCase();
+  const users = loadUsers();
+  const existingUser = users.find((u) => u.libraryId === cleanId || u.email === cleanInput.toLowerCase());
+  const targetEmail = isEmail ? cleanInput.toLowerCase() : (existingUser?.email || libraryIdToEmail(cleanId));
+
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+      redirectTo: `${window.location.origin}`
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  }
+
+  return targetEmail;
 }
 
 export function signOutUser() {
