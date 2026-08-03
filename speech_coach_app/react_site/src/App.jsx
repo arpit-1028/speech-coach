@@ -921,13 +921,16 @@ function AuthScreen({ onAuthSuccess }) {
                   background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)',
                   color: '#fff', padding: '0.8rem', borderRadius: '12px', width: '100%'
                 }} required>
-                  <option value="CSE-AIML" style={{ background: '#0d1127' }}>CSE - AI & ML</option>
-                  <option value="CSE" style={{ background: '#0d1127' }}>Computer Science (CSE)</option>
-                  <option value="ECE" style={{ background: '#0d1127' }}>Electronics (ECE)</option>
-                  <option value="IT" style={{ background: '#0d1127' }}>Information Technology (IT)</option>
-                  <option value="ME" style={{ background: '#0d1127' }}>Mechanical (ME)</option>
-                  <option value="CIVIL" style={{ background: '#0d1127' }}>Civil Engineering</option>
-                  <option value="OTHER" style={{ background: '#0d1127' }}>Other Branch</option>
+                  <option value="CSE" style={{ background: '#0d1127' }}>CSE</option>
+                  <option value="IT" style={{ background: '#0d1127' }}>IT</option>
+                  <option value="CS" style={{ background: '#0d1127' }}>CS</option>
+                  <option value="CSIT" style={{ background: '#0d1127' }}>CSIT</option>
+                  <option value="CSE (AI)" style={{ background: '#0d1127' }}>CSE (AI)</option>
+                  <option value="CSE(AIML)" style={{ background: '#0d1127' }}>CSE(AIML)</option>
+                  <option value="MECH" style={{ background: '#0d1127' }}>MECH</option>
+                  <option value="ECE" style={{ background: '#0d1127' }}>ECE</option>
+                  <option value="ELCE" style={{ background: '#0d1127' }}>ELCE</option>
+                  <option value="EEE" style={{ background: '#0d1127' }}>EEE</option>
                 </select>
               </label>
 
