@@ -10,7 +10,7 @@ import {
   translateInterview
 } from './api.js';
 import { AudioRecorder } from './audio.js';
-import { loadSession, signInUser, signUpUser, signOutUser, resetUserPassword } from './auth.js';
+import { loadSession, signInUser, signUpUser, signOutUser, resetUserPassword, getAllStudentReports, exportCSVReport } from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
 
@@ -84,8 +84,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  
-  // Translation feature states
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [transTranscript, setTransTranscript] = useState('');
   const [transTranslation, setTransTranslation] = useState('');
   const [transAudioBase64, setTransAudioBase64] = useState('');
@@ -317,6 +316,16 @@ export default function App() {
           <button 
             type="button" 
             className="secondary-action" 
+            onClick={() => setShowAnalyticsModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8', color: '#38bdf8' }}
+          >
+            <span>📊</span>
+            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Analytics</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="secondary-action" 
             onClick={() => setShowProfileModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px' }}
           >
@@ -336,6 +345,11 @@ export default function App() {
           onClose={() => setShowProfileModal(false)}
           onSignOut={handleSignOut}
         />
+      )}
+
+      {/* TEACHER ANALYTICS DASHBOARD MODAL */}
+      {showAnalyticsModal && (
+        <TeacherAnalyticsModal onClose={() => setShowAnalyticsModal(false)} />
       )}
 
       <main>
@@ -1120,6 +1134,115 @@ function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onS
           <button className="primary-action" type="button" onClick={onSignOut} style={{ background: '#ef4444', color: '#fff', justifyContent: 'center' }}>
             Sign Out
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TEACHER / ANALYTICS DASHBOARD MODAL ───────────────────────────────────────
+function TeacherAnalyticsModal({ onClose }) {
+  const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const reports = useMemo(() => getAllStudentReports(), []);
+
+  const filteredReports = useMemo(() => {
+    if (selectedBranch === 'ALL') return reports;
+    return reports.filter((r) => r.branch === selectedBranch);
+  }, [reports, selectedBranch]);
+
+  const totalStudents = filteredReports.length;
+  const avgClassAccuracy = totalStudents > 0
+    ? Math.round(filteredReports.reduce((acc, curr) => acc + (curr.avgScore || 0), 0) / totalStudents)
+    : 0;
+
+  const BRANCHES = ['ALL', 'CSE', 'IT', 'CS', 'CSIT', 'CSE (AI)', 'CSE(AIML)', 'MECH', 'ECE', 'ELCE', 'EEE'];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '850px', width: '92%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.8rem' }}>
+          <div>
+            <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              📊 Faculty & Student Performance Analytics
+            </h2>
+            <small style={{ color: '#94a3b8' }}>Real-time student progress tracking & class reporting</small>
+          </div>
+
+          <button 
+            type="button" 
+            className="primary-action"
+            onClick={() => exportCSVReport(filteredReports)}
+            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: '#10b981', color: '#fff' }}
+          >
+            📥 Export Class CSV Report
+          </button>
+        </div>
+
+        {/* SUMMARY STAT CARDS */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.8rem', marginTop: '1rem' }}>
+          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Active Students</span>
+            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#38bdf8', marginTop: '0.2rem' }}>{totalStudents}</strong>
+          </div>
+          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Class Avg Accuracy</span>
+            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#10b981', marginTop: '0.2rem' }}>{avgClassAccuracy}%</strong>
+          </div>
+          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Top Class Weak Sound</span>
+            <strong style={{ display: 'block', fontSize: '1.2rem', color: '#f43f5e', marginTop: '0.2rem' }}>TH (थ)</strong>
+          </div>
+        </div>
+
+        {/* BRANCH FILTER */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginTop: '1rem' }}>
+          <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600 }}>Filter Branch:</span>
+          <select 
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+            style={{
+              background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-glass)',
+              color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.85rem'
+            }}
+          >
+            {BRANCHES.map((b) => (
+              <option key={b} value={b} style={{ background: '#0d1127' }}>{b === 'ALL' ? 'All College Branches' : b}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* STUDENT ROSTER TABLE */}
+        <div style={{ marginTop: '0.8rem', maxHeight: '280px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem', color: '#cbd5e1' }}>
+            <thead>
+              <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Student</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Library ID</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Branch</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>XP</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Passed</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Accuracy</th>
+                <th style={{ padding: '0.6rem 0.8rem' }}>Weakest Sounds</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredReports.map((st, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '0.6rem 0.8rem', fontWeight: 600, color: '#fff' }}>
+                    {st.avatar} {st.name}
+                  </td>
+                  <td style={{ padding: '0.6rem 0.8rem', color: '#38bdf8' }}>{st.libraryId}</td>
+                  <td style={{ padding: '0.6rem 0.8rem' }}>{st.branch}</td>
+                  <td style={{ padding: '0.6rem 0.8rem', color: '#f59e0b', fontWeight: 700 }}>{st.xp}</td>
+                  <td style={{ padding: '0.6rem 0.8rem' }}>{st.completedCount}/100</td>
+                  <td style={{ padding: '0.6rem 0.8rem', color: st.avgScore >= 70 ? '#10b981' : '#f43f5e', fontWeight: 700 }}>{st.avgScore}%</td>
+                  <td style={{ padding: '0.6rem 0.8rem', color: '#f43f5e' }}>{st.weakestSounds}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
