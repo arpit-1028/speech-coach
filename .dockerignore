@@ -1,0 +1,11 @@
+venv/
+node_modules/
+speech_coach_app/react_site/node_modules/
+speech_coach_app/react_site/dist/
+.git/
+.gitignore
+.env
+*.wav
+*.mp3
+__pycache__/
+*.pyc

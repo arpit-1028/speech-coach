@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+nltk
+transformers
+torch
+python-multipart
+librosa
+soundfile
+phonemizer
+google-genai
+edge-tts
+faster-whisper
+python-dotenv
