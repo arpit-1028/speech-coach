@@ -6,6 +6,7 @@
 //   • Stage N+1's first 2 questions unlock once ALL 20 of stage N are passed (70+).
 
 import { stages, getStageForLevel } from './levels.js';
+import { upsertStudentProgress } from './supabase.js';
 
 const STORAGE_KEY = 'sapphireSpeechCoachProgress';
 
@@ -58,19 +59,26 @@ export function saveAttempt(progress, level, score, userId = 'guest', analysis =
     },
     attempts: [
       {
-        levelId: level.id,
-        label: level.label,
-        target: level.target,
+        levelId:  level.id,
+        label:    level.label,
+        target:   level.target,
         score,
         passed,
         weakSounds: collectWeakSounds(analysis),
         date: new Date().toISOString()
       },
       ...progress.attempts
-    ].slice(0, 12)
+    ].slice(0, 50) // keep last 50 attempts for teacher drilldown
   };
 
+  // Save to localStorage (primary, always works)
   localStorage.setItem(storageKey(userId), JSON.stringify(next));
+
+  // Sync to Supabase cloud (fire-and-forget — won't break if offline)
+  if (userId && userId !== 'guest') {
+    upsertStudentProgress(userId, next).catch(() => {});
+  }
+
   return { next, xpEarned, passed };
 }
 

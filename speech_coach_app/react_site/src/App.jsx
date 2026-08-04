@@ -10,7 +10,7 @@ import {
   translateInterview
 } from './api.js';
 import { AudioRecorder } from './audio.js';
-import { loadSession, signInUser, signUpUser, signOutUser, resetUserPassword, getAllStudentReports, exportCSVReport } from './auth.js';
+import { loadSession, loadTeacherSession, signInUser, signUpUser, signOutUser, signOutTeacher, resetUserPassword, getAllStudentReports, exportCSVReport } from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
 
@@ -75,6 +75,7 @@ class ConfettiEffect {
 
 export default function App() {
   const [user, setUser] = useState(() => loadSession());
+  const [teacher, setTeacher] = useState(() => loadTeacherSession());
   const [progress, setProgress] = useState(() => loadProgressForUser(loadSession()?.id));
   const [activeLevelId, setActiveLevelId] = useState(1);
   const [selectedStageId, setSelectedStageId] = useState(1);
@@ -84,7 +85,6 @@ export default function App() {
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [transTranscript, setTransTranscript] = useState('');
   const [transTranslation, setTransTranslation] = useState('');
   const [transAudioBase64, setTransAudioBase64] = useState('');
@@ -186,12 +186,21 @@ export default function App() {
     setScreen('map');
   }
 
+  function handleTeacherSuccess(teacherObj) {
+    setTeacher(teacherObj);
+  }
+
   function handleSignOut() {
     signOutUser();
     setUser(null);
     setShowProfileModal(false);
     setProgress(loadProgressForUser('guest'));
     setScreen('auth');
+  }
+
+  function handleTeacherSignOut() {
+    signOutTeacher();
+    setTeacher(null);
   }
 
   function startLevel(levelItem) {
@@ -288,8 +297,13 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }
 
+  // Teacher dashboard — completely separate from student app
+  if (teacher) {
+    return <TeacherDashboard teacher={teacher} onSignOut={handleTeacherSignOut} />;
+  }
+
   if (screen === 'auth') {
-    return <AuthScreen onAuthSuccess={handleAuthSuccess} />;
+    return <AuthScreen onAuthSuccess={handleAuthSuccess} onTeacherSuccess={handleTeacherSuccess} />;
   }
 
   // Current active main section: 'pronunciation' | 'translation' | 'grammar'
@@ -316,16 +330,6 @@ export default function App() {
           <button 
             type="button" 
             className="secondary-action" 
-            onClick={() => setShowAnalyticsModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid #38bdf8', color: '#38bdf8' }}
-          >
-            <span>📊</span>
-            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Analytics</span>
-          </button>
-
-          <button 
-            type="button" 
-            className="secondary-action" 
             onClick={() => setShowProfileModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px' }}
           >
@@ -345,11 +349,6 @@ export default function App() {
           onClose={() => setShowProfileModal(false)}
           onSignOut={handleSignOut}
         />
-      )}
-
-      {/* TEACHER ANALYTICS DASHBOARD MODAL */}
-      {showAnalyticsModal && (
-        <TeacherAnalyticsModal onClose={() => setShowAnalyticsModal(false)} />
       )}
 
       <main>
@@ -850,9 +849,9 @@ export default function App() {
   );
 }
 
-// ── AUTHENTICATION SCREEN WITH LIBRARY ID + SUPABASE / LOCAL ────────────────────
-function AuthScreen({ onAuthSuccess }) {
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot'
+// ── AUTHENTICATION SCREEN ─────────────────────────────────────────────────────
+function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot' | 'teacher'
   const [authError, setAuthError] = useState('');
   const [resetMsg, setResetMsg] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -860,38 +859,39 @@ function AuthScreen({ onAuthSuccess }) {
 
   const AVATARS = ['👨‍🎓', '👩‍💻', '🚀', '👑', '🎯', '⚡'];
 
+  function switchMode(mode) {
+    setAuthMode(mode);
+    setAuthError('');
+    setResetMsg('');
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setAuthError('');
     setResetMsg('');
     setAuthLoading(true);
 
-    const formData = new FormData(event.currentTarget);
+    const formData  = new FormData(event.currentTarget);
     const libraryId = formData.get('libraryId');
-    const email = formData.get('email');
-    const password = formData.get('password');
-    const name = formData.get('name');
-    const branch = formData.get('branch');
+    const email     = formData.get('email');
+    const password  = formData.get('password');
+    const name      = formData.get('name');
+    const branch    = formData.get('branch');
+    const teacherId = formData.get('teacherId');
 
     try {
-      if (authMode === 'forgot') {
+      if (authMode === 'teacher') {
+        const { signInTeacher } = await import('./auth.js');
+        const teacherObj = signInTeacher({ teacherId, password });
+        onTeacherSuccess(teacherObj);
+      } else if (authMode === 'forgot') {
         const targetEmail = await resetUserPassword({ email, newPassword: password });
-        setResetMsg(`✅ Password reset successful for ${targetEmail}! You can now login with your new password.`);
+        setResetMsg(`✅ Password reset for ${targetEmail}! Login with your new password.`);
       } else if (authMode === 'register') {
-        const loggedUser = await signUpUser({
-          name,
-          email,
-          libraryId,
-          branch,
-          password,
-          avatar: selectedAvatar
-        });
+        const loggedUser = await signUpUser({ name, email, libraryId, branch, password, avatar: selectedAvatar });
         onAuthSuccess(loggedUser);
       } else {
-        const loggedUser = await signInUser({
-          libraryId,
-          password
-        });
+        const loggedUser = await signInUser({ libraryId, password });
         onAuthSuccess(loggedUser);
       }
     } catch (err) {
@@ -907,70 +907,71 @@ function AuthScreen({ onAuthSuccess }) {
         <div style={{ textAlign: 'center' }}>
           <span className="brand-mark" style={{ margin: '0 auto 1rem auto' }}>S</span>
           <h1>Sapphire Speech Coach</h1>
-          <p>Sign in with your College Library ID & Password for personal AI pronunciation coaching.</p>
+          <p>Sign in with your College Library ID &amp; Password for personal AI pronunciation coaching.</p>
         </div>
 
-        {/* Auth mode toggle */}
-        <div className="tool-tabs" style={{ justifyContent: 'center', marginBottom: '0.8rem' }}>
-          <button
-            type="button"
-            className={`tool-tab ${authMode === 'login' ? 'tool-tab--active' : ''}`}
-            onClick={() => { setAuthMode('login'); setAuthError(''); setResetMsg(''); }}
-          >
+        {/* Auth mode tabs */}
+        <div className="tool-tabs" style={{ justifyContent: 'center', marginBottom: '0.8rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+          <button type="button" className={`tool-tab ${authMode === 'login' ? 'tool-tab--active' : ''}`} onClick={() => switchMode('login')}>
             🔐 Student Login
+          </button>
+          <button type="button" className={`tool-tab ${authMode === 'register' ? 'tool-tab--active' : ''}`} onClick={() => switchMode('register')}>
+            📝 Register
           </button>
           <button
             type="button"
-            className={`tool-tab ${authMode === 'register' ? 'tool-tab--active' : ''}`}
-            onClick={() => { setAuthMode('register'); setAuthError(''); setResetMsg(''); }}
+            className={`tool-tab ${authMode === 'teacher' ? 'tool-tab--active' : ''}`}
+            onClick={() => switchMode('teacher')}
+            style={authMode === 'teacher' ? { borderColor: '#38bdf8', color: '#38bdf8' } : { color: '#94a3b8' }}
           >
-            📝 Register ID
+            👨‍🏫 Faculty
           </button>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
+
+          {/* ── TEACHER LOGIN ── */}
+          {authMode === 'teacher' && (
+            <>
+              <div style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '10px', padding: '0.7rem 0.9rem', marginBottom: '0.8rem', fontSize: '0.82rem', color: '#7dd3fc' }}>
+                👨‍🏫 Faculty-only portal. Enter any Teacher ID and password to access the class analytics dashboard.
+              </div>
+              <label>
+                Teacher / Faculty ID
+                <input name="teacherId" placeholder="e.g. FACULTY01 or your name" required style={{ textTransform: 'uppercase' }} />
+              </label>
+              <label>
+                Password
+                <input name="password" type="password" placeholder="••••••••" minLength="4" required />
+              </label>
+            </>
+          )}
+
+          {/* ── STUDENT REGISTER ── */}
           {authMode === 'register' && (
             <>
               <label>
                 Full Name
                 <input name="name" minLength="2" placeholder="Arpit Agarwal" required />
               </label>
-
               <label>
                 College Email ID
                 <input name="email" type="email" placeholder="xyz.2428cse112@kiet.edu" required />
-                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Used for password recovery & notifications</small>
+                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Used for password recovery &amp; notifications</small>
               </label>
-
               <label>
                 Branch
-                <select name="branch" style={{
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)',
-                  color: '#fff', padding: '0.8rem', borderRadius: '12px', width: '100%'
-                }} required>
-                  <option value="CSE" style={{ background: '#0d1127' }}>CSE</option>
-                  <option value="IT" style={{ background: '#0d1127' }}>IT</option>
-                  <option value="CS" style={{ background: '#0d1127' }}>CS</option>
-                  <option value="CSIT" style={{ background: '#0d1127' }}>CSIT</option>
-                  <option value="CSE (AI)" style={{ background: '#0d1127' }}>CSE (AI)</option>
-                  <option value="CSE(AIML)" style={{ background: '#0d1127' }}>CSE(AIML)</option>
-                  <option value="MECH" style={{ background: '#0d1127' }}>MECH</option>
-                  <option value="ECE" style={{ background: '#0d1127' }}>ECE</option>
-                  <option value="ELCE" style={{ background: '#0d1127' }}>ELCE</option>
-                  <option value="EEE" style={{ background: '#0d1127' }}>EEE</option>
+                <select name="branch" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#fff', padding: '0.8rem', borderRadius: '12px', width: '100%' }} required>
+                  {['CSE','IT','CS','CSIT','CSE (AI)','CSE(AIML)','MECH','ECE','ELCE','EEE'].map((b) => (
+                    <option key={b} value={b} style={{ background: '#0d1127' }}>{b}</option>
+                  ))}
                 </select>
               </label>
-
               <div>
                 <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600 }}>Choose Avatar</span>
                 <div className="avatar-selector-row">
                   {AVATARS.map((av) => (
-                    <button
-                      key={av}
-                      type="button"
-                      className={`avatar-btn ${selectedAvatar === av ? 'avatar-btn--selected' : ''}`}
-                      onClick={() => setSelectedAvatar(av)}
-                    >
+                    <button key={av} type="button" className={`avatar-btn ${selectedAvatar === av ? 'avatar-btn--selected' : ''}`} onClick={() => setSelectedAvatar(av)}>
                       {av}
                     </button>
                   ))}
@@ -979,61 +980,36 @@ function AuthScreen({ onAuthSuccess }) {
             </>
           )}
 
-          {authMode === 'forgot' ? (
+          {/* ── FORGOT PASSWORD ── */}
+          {authMode === 'forgot' && (
             <>
               <label>
                 College Email ID
-                <input 
-                  name="email" 
-                  type="email"
-                  placeholder="xyz.2428cse112@kiet.edu" 
-                  required 
-                />
+                <input name="email" type="email" placeholder="xyz.2428cse112@kiet.edu" required />
                 <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Enter your registered college email address.</small>
               </label>
-
               <label>
                 New Password
-                <input 
-                  name="password" 
-                  type="password" 
-                  placeholder="Enter new password (min 6 chars)" 
-                  minLength="6" 
-                  required 
-                />
+                <input name="password" type="password" placeholder="Enter new password (min 6 chars)" minLength="6" required />
               </label>
             </>
-          ) : (
+          )}
+
+          {/* ── STUDENT LOGIN (common fields) ── */}
+          {(authMode === 'login' || authMode === 'register') && (
             <>
               <label>
                 College Library ID
-                <input 
-                  name="libraryId" 
-                  placeholder="Ex: 2428CSEAIML994" 
-                  required 
-                  style={{ textTransform: 'uppercase' }}
-                />
+                <input name="libraryId" placeholder="Ex: 2428CSEAIML994" required style={{ textTransform: 'uppercase' }} />
                 <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Format: Alphanumeric College ID</small>
               </label>
-
               <label>
                 Password
-                <input 
-                  name="password" 
-                  type="password" 
-                  placeholder="••••••••" 
-                  minLength="6" 
-                  required 
-                />
+                <input name="password" type="password" placeholder="••••••••" minLength="6" required />
               </label>
-
               {authMode === 'login' && (
                 <div style={{ textAlign: 'right', marginTop: '-0.3rem', marginBottom: '0.5rem' }}>
-                  <button 
-                    type="button" 
-                    onClick={() => { setAuthMode('forgot'); setAuthError(''); setResetMsg(''); }}
-                    style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }}
-                  >
+                  <button type="button" onClick={() => switchMode('forgot')} style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }}>
                     🔑 Forgot Password?
                   </button>
                 </div>
@@ -1042,18 +1018,19 @@ function AuthScreen({ onAuthSuccess }) {
           )}
 
           {authError && <div className="error-box">{authError}</div>}
-          {resetMsg && <div className="success-box" style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', padding: '0.8rem', borderRadius: '10px', fontSize: '0.85rem' }}>{resetMsg}</div>}
+          {resetMsg  && <div style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#34d399', padding: '0.8rem', borderRadius: '10px', fontSize: '0.85rem' }}>{resetMsg}</div>}
 
-          <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}>
-            {authLoading ? 'Processing...' : authMode === 'forgot' ? '🔑 Save & Reset Password' : authMode === 'register' ? 'Register & Begin Quest' : 'Login to Quest Map'}
+          <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem',
+            ...(authMode === 'teacher' ? { background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', color: '#fff' } : {})
+          }}>
+            {authLoading ? 'Processing...' :
+             authMode === 'teacher'   ? '📊 Open Faculty Dashboard' :
+             authMode === 'forgot'    ? '🔑 Save & Reset Password'  :
+             authMode === 'register'  ? 'Register & Begin Quest'    : 'Login to Quest Map'}
           </button>
 
           {authMode === 'forgot' && (
-            <button 
-              type="button" 
-              onClick={() => { setAuthMode('login'); setAuthError(''); setResetMsg(''); }}
-              style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '0.82rem', cursor: 'pointer', marginTop: '0.8rem', width: '100%', textAlign: 'center' }}
-            >
+            <button type="button" onClick={() => switchMode('login')} style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '0.82rem', cursor: 'pointer', marginTop: '0.8rem', width: '100%', textAlign: 'center' }}>
               ← Back to Student Login
             </button>
           )}
@@ -1063,7 +1040,8 @@ function AuthScreen({ onAuthSuccess }) {
   );
 }
 
-// ── PROFILE MODAL COMPONENT ───────────────────────────────────────────────────
+
+
 function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onSignOut }) {
   // Rank calculations
   const totalScoreSum = Object.values(progress.completed || {}).reduce((acc, curr) => acc + (curr.bestScore || 0), 0);
@@ -1140,110 +1118,316 @@ function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onS
   );
 }
 
-// ── TEACHER / ANALYTICS DASHBOARD MODAL ───────────────────────────────────────
-function TeacherAnalyticsModal({ onClose }) {
-  const [selectedBranch, setSelectedBranch] = useState('ALL');
-  const reports = useMemo(() => getAllStudentReports(), []);
+// ── TEACHER DASHBOARD (Full Page) ────────────────────────────────────────────
+const BRANCHES = ['ALL', 'CSE', 'IT', 'CS', 'CSIT', 'CSE (AI)', 'CSE(AIML)', 'MECH', 'ECE', 'ELCE', 'EEE'];
 
-  const filteredReports = useMemo(() => {
-    if (selectedBranch === 'ALL') return reports;
-    return reports.filter((r) => r.branch === selectedBranch);
+function TeacherDashboard({ teacher, onSignOut }) {
+  const [reports, setReports]             = useState([]);
+  const [loading, setLoading]             = useState(true);
+  const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const [sortBy, setSortBy]               = useState('xp');         // 'xp'|'accuracy'|'passed'|'name'
+  const [searchQuery, setSearchQuery]     = useState('');
+  const [selectedStudent, setSelectedStudent] = useState(null);
+
+  useEffect(() => {
+    getAllStudentReports().then((data) => {
+      setReports(Array.isArray(data) ? data : []);
+      setLoading(false);
+    });
+  }, []);
+
+  const filtered = useMemo(() => {
+    let list = [...reports];
+    if (selectedBranch !== 'ALL') list = list.filter((r) => r.branch === selectedBranch);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((r) => r.name.toLowerCase().includes(q) || r.libraryId.toLowerCase().includes(q));
+    }
+    list.sort((a, b) => {
+      if (sortBy === 'accuracy') return b.avgScore - a.avgScore;
+      if (sortBy === 'passed')   return b.completedCount - a.completedCount;
+      if (sortBy === 'name')     return a.name.localeCompare(b.name);
+      return b.xp - a.xp;
+    });
+    return list;
+  }, [reports, selectedBranch, sortBy, searchQuery]);
+
+  const collegeTop3 = useMemo(() =>
+    [...reports].sort((a, b) => b.avgScore - a.avgScore).slice(0, 3), [reports]);
+
+  const branchTop3 = useMemo(() => {
+    if (selectedBranch === 'ALL') return [];
+    return [...reports].filter((r) => r.branch === selectedBranch).sort((a, b) => b.avgScore - a.avgScore).slice(0, 3);
   }, [reports, selectedBranch]);
 
-  const totalStudents = filteredReports.length;
-  const avgClassAccuracy = totalStudents > 0
-    ? Math.round(filteredReports.reduce((acc, curr) => acc + (curr.avgScore || 0), 0) / totalStudents)
-    : 0;
+  const totalStudents   = reports.length;
+  const avgClassAcc     = totalStudents > 0 ? Math.round(reports.reduce((s, r) => s + r.avgScore, 0) / totalStudents) : 0;
+  const topPerformer    = collegeTop3[0];
 
-  const BRANCHES = ['ALL', 'CSE', 'IT', 'CS', 'CSIT', 'CSE (AI)', 'CSE(AIML)', 'MECH', 'ECE', 'ELCE', 'EEE'];
+  // Most common weak sound across all students
+  const weakCounts = {};
+  reports.forEach((r) => (r.weakestSoundsList || []).forEach((s) => { if (s) weakCounts[s] = (weakCounts[s] || 0) + 1; }));
+  const topWeakSound = Object.entries(weakCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'TH (थ)';
+
+  if (selectedStudent) {
+    return <StudentDetailPanel student={selectedStudent} onBack={() => setSelectedStudent(null)} />;
+  }
+
+  const card = (label, value, color) => (
+    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '1rem 1.2rem', textAlign: 'center', flex: 1, minWidth: '130px' }}>
+      <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{label}</div>
+      <div style={{ fontSize: '1.5rem', fontWeight: 800, color }}>{value}</div>
+    </div>
+  );
+
+  const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '850px', width: '92%', maxHeight: '90vh', overflowY: 'auto' }}>
-        <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.8rem' }}>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#080e1f 0%,#0d1127 60%,#0a1628 100%)', color: '#e2e8f0', fontFamily: 'Inter,system-ui,sans-serif' }}>
+      {/* ── HEADER ── */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          <div style={{ width: '2.4rem', height: '2.4rem', borderRadius: '10px', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '1.1rem' }}>S</div>
           <div>
-            <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              📊 Faculty & Student Performance Analytics
-            </h2>
-            <small style={{ color: '#94a3b8' }}>Real-time student progress tracking & class reporting</small>
+            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#fff' }}>Sapphire — Faculty Analytics Dashboard</div>
+            <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>👨‍🏫 {teacher.name} • Real-time class data from Supabase</div>
           </div>
-
-          <button 
-            type="button" 
-            className="primary-action"
-            onClick={() => exportCSVReport(filteredReports)}
-            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: '#10b981', color: '#fff' }}
-          >
-            📥 Export Class CSV Report
+        </div>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+          <button onClick={() => getAllStudentReports().then((d) => { setReports(Array.isArray(d) ? d : []); })} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#cbd5e1', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem' }}>
+            🔄 Refresh
+          </button>
+          <button onClick={() => exportCSVReport(filtered)} style={{ background: '#10b981', border: 'none', color: '#fff', padding: '0.4rem 0.9rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>
+            📥 Export CSV
+          </button>
+          <button onClick={onSignOut} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem' }}>
+            Sign Out
           </button>
         </div>
+      </header>
 
-        {/* SUMMARY STAT CARDS */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.8rem', marginTop: '1rem' }}>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Active Students</span>
-            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#38bdf8', marginTop: '0.2rem' }}>{totalStudents}</strong>
+      <div style={{ padding: '1.5rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
+
+        {/* ── LOADING ── */}
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
+            Loading student data from Supabase...
           </div>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Class Avg Accuracy</span>
-            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#10b981', marginTop: '0.2rem' }}>{avgClassAccuracy}%</strong>
-          </div>
-          <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
-            <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Top Class Weak Sound</span>
-            <strong style={{ display: 'block', fontSize: '1.2rem', color: '#f43f5e', marginTop: '0.2rem' }}>TH (थ)</strong>
-          </div>
+        )}
+
+        {!loading && (
+          <>
+            {/* ── SUMMARY CARDS ── */}
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+              {card('Total Students', totalStudents, '#38bdf8')}
+              {card('College Avg Accuracy', `${avgClassAcc}%`, '#10b981')}
+              {card('Top Performer', topPerformer ? topPerformer.name.split(' ')[0] : '—', '#f59e0b')}
+              {card('Top Weak Sound', topWeakSound, '#f43f5e')}
+            </div>
+
+            {/* ── TOP PERFORMERS ── */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '0.9rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                🏆 Top Performers — {selectedBranch === 'ALL' ? 'Whole College' : selectedBranch}
+              </h3>
+              <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+                {(selectedBranch === 'ALL' ? collegeTop3 : branchTop3).map((s, i) => (
+                  <div key={s.libraryId} onClick={() => setSelectedStudent(s)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', gap: '0.7rem', cursor: 'pointer', flex: 1, minWidth: '200px', transition: 'border-color 0.2s' }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor='#38bdf8'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'}
+                  >
+                    <span style={{ fontSize: '1.6rem' }}>{RANK_MEDALS[i]}</span>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>{s.avatar} {s.name}</div>
+                      <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>{s.libraryId} • {s.branch}</div>
+                    </div>
+                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                      <div style={{ fontWeight: 800, color: '#10b981', fontSize: '1.1rem' }}>{s.avgScore}%</div>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{s.completedCount} passed</div>
+                    </div>
+                  </div>
+                ))}
+                {(selectedBranch === 'ALL' ? collegeTop3 : branchTop3).length === 0 && (
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>No students in this branch yet.</div>
+                )}
+              </div>
+            </div>
+
+            {/* ── FILTER & SORT BAR ── */}
+            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.8rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.8rem 1rem' }}>
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔍 Search by name or library ID..."
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.84rem', flex: '1', minWidth: '180px' }}
+              />
+              <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} style={{ background: '#0d1127', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.84rem' }}>
+                {BRANCHES.map((b) => <option key={b} value={b}>{b === 'ALL' ? 'All Branches' : b}</option>)}
+              </select>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ background: '#0d1127', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.84rem' }}>
+                <option value="xp">Sort: XP (High → Low)</option>
+                <option value="accuracy">Sort: Accuracy % (High → Low)</option>
+                <option value="passed">Sort: Questions Passed</option>
+                <option value="name">Sort: Name A → Z</option>
+              </select>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>Showing {filtered.length} / {reports.length} students</span>
+            </div>
+
+            {/* ── STUDENT TABLE ── */}
+            <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', color: '#cbd5e1' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>#</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Student</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Library ID</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Branch</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>XP</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Passed /100</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Avg Score</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Weakest Sounds</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Last Active</th>
+                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>View</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No students found. Students will appear here after registering and practicing.</td></tr>
+                  )}
+                  {filtered.map((st, i) => (
+                    <tr key={st.libraryId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.15s', cursor: 'pointer' }}
+                      onClick={() => setSelectedStudent(st)}
+                      onMouseEnter={(e) => e.currentTarget.style.background='rgba(255,255,255,0.03)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background='transparent'}
+                    >
+                      <td style={{ padding: '0.65rem 1rem', color: '#64748b', fontWeight: 600 }}>{i + 1}</td>
+                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600, color: '#fff' }}>{st.avatar} {st.name}</td>
+                      <td style={{ padding: '0.65rem 1rem', color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.8rem' }}>{st.libraryId}</td>
+                      <td style={{ padding: '0.65rem 1rem' }}>
+                        <span style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', padding: '0.15rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>{st.branch}</span>
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{st.xp}</td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                        <span style={{ color: st.completedCount > 0 ? '#10b981' : '#64748b' }}>{st.completedCount}</span>
+                        <span style={{ color: '#64748b' }}>/100</span>
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                        <span style={{ fontWeight: 700, color: st.avgScore >= 80 ? '#10b981' : st.avgScore >= 60 ? '#f59e0b' : '#f43f5e' }}>{st.avgScore}%</span>
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', color: '#f43f5e', fontSize: '0.78rem' }}>{st.weakestSounds || '—'}</td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: '#64748b', fontSize: '0.78rem' }}>{st.lastActive || '—'}</td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
+                        <button style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }} onClick={(e) => { e.stopPropagation(); setSelectedStudent(st); }}>
+                          View →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── STUDENT DETAIL PANEL ──────────────────────────────────────────────────────
+function StudentDetailPanel({ student, onBack }) {
+  const { levelDetail = [], recentAttempts = [] } = student;
+
+  let rankName = 'Bronze Speaker 🥉'; let rankColor = '#cd7f32';
+  if (student.completedCount >= 40 || student.xp >= 1000) { rankName = 'Diamond Orator 👑'; rankColor = '#38bdf8'; }
+  else if (student.completedCount >= 20 || student.xp >= 500) { rankName = 'Gold Master 🥇'; rankColor = '#f59e0b'; }
+  else if (student.completedCount >= 5  || student.xp >= 150) { rankName = 'Silver Speaker 🥈'; rankColor = '#94a3b8'; }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#080e1f 0%,#0d1127 60%,#0a1628 100%)', color: '#e2e8f0', fontFamily: 'Inter,system-ui,sans-serif' }}>
+      <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', position: 'sticky', top: 0, zIndex: 10 }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.84rem' }}>
+          ← Back to Dashboard
+        </button>
+        <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.05rem' }}>
+          {student.avatar} {student.name} — Detailed Report
         </div>
+      </header>
 
-        {/* BRANCH FILTER */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', marginTop: '1rem' }}>
-          <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600 }}>Filter Branch:</span>
-          <select 
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            style={{
-              background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-glass)',
-              color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.85rem'
-            }}
-          >
-            {BRANCHES.map((b) => (
-              <option key={b} value={b} style={{ background: '#0d1127' }}>{b === 'ALL' ? 'All College Branches' : b}</option>
+      <div style={{ padding: '1.5rem 2rem', maxWidth: '1100px', margin: '0 auto' }}>
+
+        {/* Profile banner */}
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.2rem 1.5rem', marginBottom: '1.2rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
+          <div style={{ fontSize: '2.5rem' }}>{student.avatar}</div>
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#fff' }}>{student.name}</div>
+            <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '0.2rem' }}>
+              {student.libraryId} • {student.branch} • {student.email}
+            </div>
+            <div style={{ marginTop: '0.4rem', color: rankColor, fontWeight: 700, fontSize: '0.9rem' }}>{rankName}</div>
+          </div>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+            {[['XP', student.xp, '#f59e0b'], ['Passed', `${student.completedCount}/100`, '#10b981'], ['Avg Score', `${student.avgScore}%`, '#38bdf8'], ['Streak', `${student.streak}d`, '#a855f7']].map(([l, v, c]) => (
+              <div key={l} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>{l}</div>
+                <div style={{ fontWeight: 800, fontSize: '1.3rem', color: c }}>{v}</div>
+              </div>
             ))}
-          </select>
+          </div>
         </div>
 
-        {/* STUDENT ROSTER TABLE */}
-        <div style={{ marginTop: '0.8rem', maxHeight: '280px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem', color: '#cbd5e1' }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Student</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Library ID</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Branch</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>XP</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Passed</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Accuracy</th>
-                <th style={{ padding: '0.6rem 0.8rem' }}>Weakest Sounds</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReports.map((st, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                  <td style={{ padding: '0.6rem 0.8rem', fontWeight: 600, color: '#fff' }}>
-                    {st.avatar} {st.name}
-                  </td>
-                  <td style={{ padding: '0.6rem 0.8rem', color: '#38bdf8' }}>{st.libraryId}</td>
-                  <td style={{ padding: '0.6rem 0.8rem' }}>{st.branch}</td>
-                  <td style={{ padding: '0.6rem 0.8rem', color: '#f59e0b', fontWeight: 700 }}>{st.xp}</td>
-                  <td style={{ padding: '0.6rem 0.8rem' }}>{st.completedCount}/100</td>
-                  <td style={{ padding: '0.6rem 0.8rem', color: st.avgScore >= 70 ? '#10b981' : '#f43f5e', fontWeight: 700 }}>{st.avgScore}%</td>
-                  <td style={{ padding: '0.6rem 0.8rem', color: '#f43f5e' }}>{st.weakestSounds}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+
+          {/* Level-by-level history */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '1rem', maxHeight: '380px', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              📋 Level-by-Level Scores ({levelDetail.length} attempted)
+            </h3>
+            {levelDetail.length === 0 && <div style={{ color: '#64748b', fontSize: '0.83rem' }}>No levels attempted yet.</div>}
+            {levelDetail.map((lv) => (
+              <div key={lv.levelId} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.5rem', borderRadius: '8px', marginBottom: '0.2rem', background: lv.passed ? 'rgba(16,185,129,0.05)' : 'rgba(244,63,94,0.05)' }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', width: '2.5rem', flexShrink: 0 }}>Q{lv.levelId}</span>
+                <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${lv.bestScore}%`, background: lv.passed ? '#10b981' : '#f43f5e', borderRadius: '3px' }} />
+                </div>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: lv.passed ? '#10b981' : '#f43f5e', width: '2.8rem', textAlign: 'right' }}>{lv.bestScore}%</span>
+                <span style={{ fontSize: '0.68rem', color: '#64748b', width: '1.5rem', textAlign: 'center' }}>{lv.passed ? '✓' : '✗'}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Recent attempts */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '1rem', maxHeight: '380px', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              🕒 Recent Practice Attempts (last {recentAttempts.length})
+            </h3>
+            {recentAttempts.length === 0 && <div style={{ color: '#64748b', fontSize: '0.83rem' }}>No attempts recorded yet.</div>}
+            {recentAttempts.map((att, i) => (
+              <div key={i} style={{ padding: '0.55rem 0.7rem', borderRadius: '8px', marginBottom: '0.4rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.83rem' }}>Q{att.levelId}: {att.label}</span>
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: att.passed ? '#10b981' : '#f43f5e' }}>{att.score}% {att.passed ? '✓' : '✗'}</span>
+                </div>
+                {att.weakSounds?.length > 0 && (
+                  <div style={{ fontSize: '0.72rem', color: '#f43f5e', marginTop: '0.2rem' }}>⚠ Weak: {att.weakSounds.slice(0, 3).join(', ')}</div>
+                )}
+                <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.2rem' }}>{att.date ? new Date(att.date).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : ''}</div>
+              </div>
+            ))}
+          </div>
         </div>
+
+        {/* Weak sounds summary */}
+        {student.weakestSoundsList?.length > 0 && (
+          <div style={{ marginTop: '1rem', background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '12px', padding: '0.9rem 1.1rem' }}>
+            <div style={{ fontWeight: 700, color: '#f43f5e', fontSize: '0.83rem', marginBottom: '0.4rem' }}>⚠️ Top Phoneme Challenges</div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {student.weakestSoundsList.map((s) => (
+                <span key={s} style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.25)', color: '#fb7185', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: 600 }}>{s}</span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
