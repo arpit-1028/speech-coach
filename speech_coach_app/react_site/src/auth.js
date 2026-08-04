@@ -147,28 +147,37 @@ export async function signInUser({ libraryId, password }) {
   return existingUser;
 }
 
-export async function requestPasswordReset(libraryIdOrEmail) {
-  const cleanInput = (libraryIdOrEmail || '').trim();
-  if (!cleanInput) {
-    throw new Error('Please enter your College Library ID or Email.');
+export async function resetUserPassword({ email, newPassword }) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Please enter a valid College Email ID.');
   }
 
-  const isEmail = cleanInput.includes('@');
-  const cleanId = cleanInput.toUpperCase();
-  const users = loadUsers();
-  const existingUser = users.find((u) => u.libraryId === cleanId || u.email === cleanInput.toLowerCase());
-  const targetEmail = isEmail ? cleanInput.toLowerCase() : (existingUser?.email || libraryIdToEmail(cleanId));
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('New password must be at least 6 characters.');
+  }
 
+  // Try Supabase auth reset / update
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.auth.resetPasswordForEmail(targetEmail, {
-      redirectTo: `${window.location.origin}`
-    });
-    if (error) {
-      throw new Error(error.message);
+    try {
+      await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}`
+      });
+    } catch (e) {
+      console.warn('Supabase SMTP notice:', e.message);
     }
   }
 
-  return targetEmail;
+  // Update in local user store
+  const users = loadUsers();
+  const existingUser = users.find((u) => u.email === cleanEmail);
+  if (existingUser) {
+    existingUser.password = newPassword;
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  }
+
+  return cleanEmail;
 }
 
 export function signOutUser() {

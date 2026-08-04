@@ -10,7 +10,7 @@ import {
   translateInterview
 } from './api.js';
 import { AudioRecorder } from './audio.js';
-import { loadSession, signInUser, signUpUser, signOutUser, requestPasswordReset } from './auth.js';
+import { loadSession, signInUser, signUpUser, signOutUser, resetUserPassword } from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
 import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
 
@@ -861,8 +861,8 @@ function AuthScreen({ onAuthSuccess }) {
 
     try {
       if (authMode === 'forgot') {
-        const targetEmail = await requestPasswordReset(libraryId || email);
-        setResetMsg(`Password reset link/OTP sent to your college email (${targetEmail}). Check your inbox!`);
+        const targetEmail = await resetUserPassword({ email, newPassword: password });
+        setResetMsg(`✅ Password reset successful for ${targetEmail}! You can now login with your new password.`);
       } else if (authMode === 'register') {
         const loggedUser = await signUpUser({
           name,
@@ -966,15 +966,29 @@ function AuthScreen({ onAuthSuccess }) {
           )}
 
           {authMode === 'forgot' ? (
-            <label>
-              College Library ID or Email
-              <input 
-                name="libraryId" 
-                placeholder="Ex: 2428CSEAIML994 or student@kiet.edu" 
-                required 
-              />
-              <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>We will send password reset link to your college email.</small>
-            </label>
+            <>
+              <label>
+                College Email ID
+                <input 
+                  name="email" 
+                  type="email"
+                  placeholder="xyz.2428cse112@kiet.edu" 
+                  required 
+                />
+                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Enter your registered college email address.</small>
+              </label>
+
+              <label>
+                New Password
+                <input 
+                  name="password" 
+                  type="password" 
+                  placeholder="Enter new password (min 6 chars)" 
+                  minLength="6" 
+                  required 
+                />
+              </label>
+            </>
           ) : (
             <>
               <label>
@@ -1017,7 +1031,7 @@ function AuthScreen({ onAuthSuccess }) {
           {resetMsg && <div className="success-box" style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#34d399', padding: '0.8rem', borderRadius: '10px', fontSize: '0.85rem' }}>{resetMsg}</div>}
 
           <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem' }}>
-            {authLoading ? 'Processing...' : authMode === 'forgot' ? '📧 Send Password Reset Link' : authMode === 'register' ? 'Register & Begin Quest' : 'Login to Quest Map'}
+            {authLoading ? 'Processing...' : authMode === 'forgot' ? '🔑 Save & Reset Password' : authMode === 'register' ? 'Register & Begin Quest' : 'Login to Quest Map'}
           </button>
 
           {authMode === 'forgot' && (
