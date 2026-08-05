@@ -12,7 +12,7 @@ import {
 import { AudioRecorder } from './audio.js';
 import { loadSession, loadTeacherSession, signInUser, signUpUser, signOutUser, signOutTeacher, resetUserPassword, getAllStudentReports, exportCSVReport } from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
-import { isUnlocked, loadProgressForUser, saveAttempt } from './progress.js';
+import { isUnlocked, loadProgressForUser, syncAndLoadProgressForUser, saveAttempt } from './progress.js';
 
 // Canvas Confetti animation class
 class ConfettiEffect {
@@ -181,9 +181,19 @@ export default function App() {
     }
   }
 
+  // Cloud Sync Restoration effect on login / refresh
+  useEffect(() => {
+    if (user?.id) {
+      syncAndLoadProgressForUser(user.id).then((syncedProgress) => {
+        if (syncedProgress) setProgress(syncedProgress);
+      });
+    }
+  }, [user?.id]);
+
   async function handleAuthSuccess(loggedInUser) {
     setUser(loggedInUser);
-    setProgress(loadProgressForUser(loggedInUser.id));
+    const synced = await syncAndLoadProgressForUser(loggedInUser.id);
+    setProgress(synced || loadProgressForUser(loggedInUser.id));
     setScreen('map');
   }
 

@@ -1,12 +1,6 @@
-// progress.js — Persistent XP, streak, and level unlock logic
-//
-// Unlock Rules:
-//   • First 2 questions of EVERY stage are always unlocked.
-//   • Within a stage: need 70+ on question N to unlock question N+1.
-//   • Stage N+1's first 2 questions unlock once ALL 20 of stage N are passed (70+).
-
+// progress.js — Persistent XP, streak, level unlock logic & cloud sync restoration
 import { stages, getStageForLevel } from './levels.js';
-import { upsertStudentProgress } from './supabase.js';
+import { upsertStudentProgress, fetchStudentProgressFromSupabase } from './supabase.js';
 
 const STORAGE_KEY = 'sapphireSpeechCoachProgress';
 
@@ -24,14 +18,69 @@ export function loadProgress() {
 
 export function loadProgressForUser(userId = 'guest') {
   try {
-    const stored = JSON.parse(localStorage.getItem(storageKey(userId)));
+    const key = storageKey(userId);
+    const stored = JSON.parse(localStorage.getItem(key));
+    // Fallback: check un-normalized key if uppercase didn't match
+    if (!stored && userId && userId !== 'guest') {
+      const rawStored = JSON.parse(localStorage.getItem(`${STORAGE_KEY}:${userId}`));
+      if (rawStored) return { ...initialProgress, ...rawStored };
+    }
     return { ...initialProgress, ...stored };
   } catch {
     return { ...initialProgress };
   }
 }
 
+// ── CLOUD SYNC & RESTORE ──────────────────────────────────────────────────────
+// Async loader that restores progress from Supabase cloud on login/refresh
+export async function syncAndLoadProgressForUser(userId = 'guest') {
+  const localProg = loadProgressForUser(userId);
+  if (!userId || userId === 'guest') return localProg;
+
+  try {
+    const cloudProg = await fetchStudentProgressFromSupabase(userId);
+    if (!cloudProg) return localProg;
+
+    // Merge local and cloud (keep best score for each question, highest XP, max streak)
+    const mergedCompleted = { ...localProg.completed };
+    Object.entries(cloudProg.completed || {}).forEach(([lvlId, data]) => {
+      const existing = mergedCompleted[lvlId];
+      if (!existing) {
+        mergedCompleted[lvlId] = data;
+      } else {
+        mergedCompleted[lvlId] = {
+          bestScore: Math.max(existing.bestScore || 0, data.bestScore || 0),
+          attempts: (existing.attempts || 0) + (data.attempts || 0)
+        };
+      }
+    });
+
+    const mergedAttempts = dedupeAttempts([
+      ...(localProg.attempts || []),
+      ...(cloudProg.attempts || [])
+    ]);
+
+    const merged = {
+      xp: Math.max(localProg.xp || 0, cloudProg.xp || 0),
+      streak: Math.max(localProg.streak || 0, cloudProg.streak || 0),
+      lastPracticeDate: localProg.lastPracticeDate || cloudProg.lastPracticeDate || '',
+      completed: mergedCompleted,
+      attempts: mergedAttempts.slice(0, 50)
+    };
+
+    // Save merged to localStorage and cloud
+    localStorage.setItem(storageKey(userId), JSON.stringify(merged));
+    upsertStudentProgress(userId, merged).catch(() => {});
+
+    return merged;
+  } catch (e) {
+    console.warn('syncAndLoadProgressForUser error:', e.message);
+    return localProg;
+  }
+}
+
 export function saveAttempt(progress, level, score, userId = 'guest', analysis = {}) {
+  const cleanUserId = (userId || 'guest').trim().toUpperCase();
   const today = new Date().toISOString().slice(0, 10);
   const passed = score >= 70;
   const existing = progress.completed[level.id] || { bestScore: 0, attempts: 0 };
@@ -67,16 +116,16 @@ export function saveAttempt(progress, level, score, userId = 'guest', analysis =
         weakSounds: collectWeakSounds(analysis),
         date: new Date().toISOString()
       },
-      ...progress.attempts
-    ].slice(0, 50) // keep last 50 attempts for teacher drilldown
+      ...(progress.attempts || [])
+    ].slice(0, 50)
   };
 
-  // Save to localStorage (primary, always works)
-  localStorage.setItem(storageKey(userId), JSON.stringify(next));
+  // Save to localStorage (primary)
+  localStorage.setItem(storageKey(cleanUserId), JSON.stringify(next));
 
-  // Sync to Supabase cloud (fire-and-forget — won't break if offline)
-  if (userId && userId !== 'guest') {
-    upsertStudentProgress(userId, next).catch(() => {});
+  // Sync to Supabase cloud (fire-and-forget)
+  if (cleanUserId && cleanUserId !== 'GUEST') {
+    upsertStudentProgress(cleanUserId, next).catch(() => {});
   }
 
   return { next, xpEarned, passed };
@@ -109,7 +158,8 @@ function xpFor(score) {
 }
 
 function storageKey(userId) {
-  return `${STORAGE_KEY}:${userId || 'guest'}`;
+  const clean = (userId || 'guest').trim().toUpperCase();
+  return `${STORAGE_KEY}:${clean}`;
 }
 
 function collectWeakSounds(analysis) {
@@ -119,4 +169,17 @@ function collectWeakSounds(analysis) {
     .map((item) => item.expected || item.spoken)
     .filter(Boolean)
     .slice(0, 6);
+}
+
+function dedupeAttempts(attempts) {
+  const seen = new Set();
+  const out = [];
+  attempts.forEach((a) => {
+    const key = `${a.levelId}:${a.date || ''}:${a.score}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(a);
+    }
+  });
+  return out;
 }

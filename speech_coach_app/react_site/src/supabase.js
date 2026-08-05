@@ -31,7 +31,7 @@ export async function upsertStudentProfile(profile) {
   if (!isSupabaseConfigured || !supabase) return;
   try {
     const { error } = await supabase.from('student_profiles').upsert({
-      library_id: profile.libraryId,
+      library_id: profile.libraryId || profile.id,
       name:       profile.name,
       email:      profile.email,
       branch:     profile.branch,
@@ -48,9 +48,10 @@ export async function upsertStudentProfile(profile) {
 // Called after every practice attempt: syncs XP, completed, attempts to cloud
 export async function upsertStudentProgress(libraryId, progress) {
   if (!isSupabaseConfigured || !supabase || !libraryId || libraryId === 'guest') return;
+  const cleanId = libraryId.trim().toUpperCase();
   try {
     const { error } = await supabase.from('student_progress').upsert({
-      library_id:         libraryId,
+      library_id:         cleanId,
       xp:                 progress.xp || 0,
       streak:             progress.streak || 0,
       completed:          progress.completed || {},
@@ -64,9 +65,40 @@ export async function upsertStudentProgress(libraryId, progress) {
   }
 }
 
+// ── FETCH SINGLE STUDENT PROGRESS FROM SUPABASE ─────────────────────────────
+// Called on user login / refresh to restore progress from cloud
+export async function fetchStudentProgressFromSupabase(libraryId) {
+  if (!isSupabaseConfigured || !supabase || !libraryId || libraryId === 'guest') return null;
+  const cleanId = libraryId.trim().toUpperCase();
+  try {
+    const { data, error } = await supabase
+      .from('student_progress')
+      .select('*')
+      .eq('library_id', cleanId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('fetchStudentProgressFromSupabase error:', error.message);
+      return null;
+    }
+
+    if (data) {
+      return {
+        xp:                 data.xp || 0,
+        streak:             data.streak || 0,
+        completed:          data.completed || {},
+        attempts:           data.attempts || [],
+        lastPracticeDate:   data.last_practice_date || ''
+      };
+    }
+  } catch (e) {
+    console.warn('fetchStudentProgressFromSupabase exception:', e.message);
+  }
+  return null;
+}
+
 // ── FETCH ALL STUDENT DATA FOR TEACHER DASHBOARD ────────────────────────────
 // Returns joined data from student_profiles + student_progress
-// Teacher dashboard calls this for real-time data from all devices/browsers
 export async function fetchAllStudentProgress() {
   if (!isSupabaseConfigured || !supabase) return null;
   try {
