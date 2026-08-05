@@ -85,6 +85,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
   const [transTranscript, setTransTranscript] = useState('');
   const [transTranslation, setTransTranslation] = useState('');
   const [transAudioBase64, setTransAudioBase64] = useState('');
@@ -330,6 +331,16 @@ export default function App() {
           <button 
             type="button" 
             className="secondary-action" 
+            onClick={() => setShowLeaderboardModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#f59e0b' }}
+          >
+            <span>🏆</span>
+            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Leaderboard</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="secondary-action" 
             onClick={() => setShowProfileModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px' }}
           >
@@ -348,6 +359,14 @@ export default function App() {
           weakSounds={weakSounds}
           onClose={() => setShowProfileModal(false)}
           onSignOut={handleSignOut}
+        />
+      )}
+
+      {/* STUDENT LEADERBOARD MODAL */}
+      {showLeaderboardModal && (
+        <StudentLeaderboardModal 
+          currentUser={user} 
+          onClose={() => setShowLeaderboardModal(false)} 
         />
       )}
 
@@ -1111,6 +1130,146 @@ function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onS
           </button>
           <button className="primary-action" type="button" onClick={onSignOut} style={{ background: '#ef4444', color: '#fff', justifyContent: 'center' }}>
             Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── STUDENT LEADERBOARD MODAL ─────────────────────────────────────────────────
+function StudentLeaderboardModal({ currentUser, onClose }) {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('branch'); // 'branch' | 'college'
+
+  useEffect(() => {
+    getAllStudentReports().then((data) => {
+      setReports(Array.isArray(data) ? data : []);
+      setLoading(false);
+    });
+  }, []);
+
+  const studentBranch = currentUser?.branch || 'CSE';
+  const myLibraryId   = (currentUser?.libraryId || currentUser?.id || '').toUpperCase();
+
+  // All college sorted by XP
+  const collegeSorted = useMemo(() => {
+    return [...reports].sort((a, b) => b.xp - a.xp || b.avgScore - a.avgScore);
+  }, [reports]);
+
+  // Branch sorted by XP
+  const branchSorted = useMemo(() => {
+    return collegeSorted.filter((r) => r.branch === studentBranch);
+  }, [collegeSorted, studentBranch]);
+
+  // Ranks
+  const collegeRankIdx = collegeSorted.findIndex((r) => r.libraryId?.toUpperCase() === myLibraryId || r.id?.toUpperCase() === myLibraryId);
+  const branchRankIdx  = branchSorted.findIndex((r) => r.libraryId?.toUpperCase() === myLibraryId || r.id?.toUpperCase() === myLibraryId);
+
+  const collegeRankStr = collegeRankIdx >= 0 ? `#${collegeRankIdx + 1} of ${collegeSorted.length}` : 'Unranked';
+  const branchRankStr  = branchRankIdx >= 0  ? `#${branchRankIdx + 1} of ${branchSorted.length}`  : 'Unranked';
+
+  const displayedList = activeTab === 'branch' ? branchSorted : collegeSorted;
+
+  const RANK_EMOJIS = ['🥇', '🥈', '🥉'];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px', width: '92%', maxHeight: '85vh', overflowY: 'auto' }}>
+        <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
+
+        <div style={{ textAlign: 'center', marginBottom: '0.8rem' }}>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            🏆 Student Leaderboard
+          </h2>
+          <small style={{ color: '#94a3b8' }}>See your position among peers in {studentBranch} and across the college</small>
+        </div>
+
+        {/* MY RANK CARDS */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
+          <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.7rem', color: '#7dd3fc', textTransform: 'uppercase', fontWeight: 700 }}>📍 Branch Rank ({studentBranch})</span>
+            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#38bdf8', marginTop: '0.2rem' }}>{branchRankStr}</strong>
+          </div>
+          <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
+            <span style={{ fontSize: '0.7rem', color: '#fde68a', textTransform: 'uppercase', fontWeight: 700 }}>🏫 College-Wide Rank</span>
+            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#f59e0b', marginTop: '0.2rem' }}>{collegeRankStr}</strong>
+          </div>
+        </div>
+
+        {/* TAB SWITCHER */}
+        <div className="tool-tabs" style={{ justifyContent: 'center', marginBottom: '0.8rem' }}>
+          <button
+            type="button"
+            className={`tool-tab ${activeTab === 'branch' ? 'tool-tab--active' : ''}`}
+            onClick={() => setActiveTab('branch')}
+          >
+            📍 {studentBranch} Branch
+          </button>
+          <button
+            type="button"
+            className={`tool-tab ${activeTab === 'college' ? 'tool-tab--active' : ''}`}
+            onClick={() => setActiveTab('college')}
+          >
+            🏫 Whole College
+          </button>
+        </div>
+
+        {/* LEADERBOARD LIST */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Loading leaderboard...</div>
+        ) : (
+          <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem', color: '#cbd5e1' }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Rank</th>
+                  <th style={{ padding: '0.6rem 0.8rem' }}>Student</th>
+                  <th style={{ padding: '0.6rem 0.8rem' }}>Branch</th>
+                  <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>XP</th>
+                  <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Passed</th>
+                  <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Accuracy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedList.length === 0 && (
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b' }}>No students recorded yet.</td></tr>
+                )}
+                {displayedList.map((st, i) => {
+                  const isMe = st.libraryId?.toUpperCase() === myLibraryId || st.id?.toUpperCase() === myLibraryId;
+                  return (
+                    <tr 
+                      key={st.libraryId || i}
+                      style={{
+                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        background: isMe ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+                        fontWeight: isMe ? 700 : 400
+                      }}
+                    >
+                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', fontWeight: 800 }}>
+                        {i < 3 ? RANK_EMOJIS[i] : `#${i + 1}`}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.8rem', color: isMe ? '#38bdf8' : '#fff' }}>
+                        {st.avatar} {st.name} {isMe && '(You)'}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.8rem' }}>
+                        <span style={{ background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.74rem' }}>{st.branch}</span>
+                      </td>
+                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{st.xp}</td>
+                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>{st.completedCount}/100</td>
+                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: st.avgScore >= 70 ? '#10b981' : '#f43f5e', fontWeight: 700 }}>{st.avgScore}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+          <button className="secondary-action" type="button" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>
+            Back to Quest Map
           </button>
         </div>
       </div>
