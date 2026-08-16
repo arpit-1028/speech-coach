@@ -1299,12 +1299,7 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
                       <td style={{ padding: '0.6rem 0.8rem', color: isMe ? '#38bdf8' : '#fff' }}>
                         {st.avatar} {st.name} {isMe && '(You)'}
                       </td>
-                      <td style={{ padding: '0.6rem 0.8rem' }}>
-                        <span style={{ background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.74rem' }}>{st.branch}</span>
-                      </td>
-                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{st.xp}</td>
-                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>{st.completedCount}/100</td>
-                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: st.avgScore >= 70 ? '#10b981' : '#f43f5e', fontWeight: 700 }}>{st.avgScore}%</td>
+<td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: st.avgScore >= 70 ? '#10b981' : '#f43f5e', fontWeight: 700 }}>{st.avgScore}%</td>
                     </tr>
                   );
                 })}
@@ -1324,161 +1319,239 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
 }
 
 // ── DIAGNOSTIC ASSESSMENT MODAL ──────────────────────────────────────────────
+const FULL_DIAGNOSTIC_15 = [
+  { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', hint: 'Say "map" — press both lips together firmly', difficulty: 'easy' },
+  { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', hint: 'Say "ball" — pop your lips apart for B', difficulty: 'easy' },
+  { sound: 's', display_name: 'S Sound', word: 'sun', pronounce: 'sʌn', skill: 'consonants', hint: 'Say "sun" — smooth hissing S sound', difficulty: 'easy' },
+  { sound: 'sh', display_name: 'SH Sound', word: 'ship', pronounce: 'ʃɪp', skill: 'sh_confusion', hint: 'Say "ship" — lips pushed forward for SH', difficulty: 'easy' },
+  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', hint: 'Say "red" — curl tongue back slightly for R', difficulty: 'easy' },
+  { sound: 'v', display_name: 'V Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', hint: 'Say "very" — upper teeth touch lower lip for V', difficulty: 'medium' },
+  { sound: 'w', display_name: 'W Sound', word: 'water', pronounce: 'ˈwɔːtər', skill: 'vw_confusion', hint: 'Say "water" — round lips into a circle for W', difficulty: 'medium' },
+  { sound: 'th', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" — tongue tip lightly between teeth', difficulty: 'medium' },
+  { sound: 'dh', display_name: 'TH Sound (Voiced)', word: 'this', pronounce: 'ðɪs', skill: 'th_sounds', hint: 'Say "this" — voiced TH, tongue between teeth', difficulty: 'medium' },
+  { sound: 'l', display_name: 'L Sound', word: 'little', pronounce: 'ˈlɪtəl', skill: 'rl_confusion', hint: 'Say "little" — tongue tip touches roof of mouth', difficulty: 'medium' },
+  { sound: 'th', display_name: 'TH + R Blend', word: 'through', pronounce: 'θruː', skill: 'th_sounds', hint: 'Say "through" — smooth transition from TH to R', difficulty: 'hard' },
+  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', hint: 'Say "world" — round lips for W, curl for R & L', difficulty: 'hard' },
+  { sound: 'th', display_name: 'TH in Context', word: 'weather', pronounce: 'ˈwɛðər', skill: 'th_sounds', hint: 'Say "weather" — voiced TH clearly in the middle', difficulty: 'hard' },
+  { sound: 'r', display_name: 'R + TH Blend', word: 'thirty', pronounce: 'ˈθɜːrti', skill: 'rl_confusion', hint: 'Say "thirty" — TH first, then R sound clearly', difficulty: 'hard' },
+  { sound: 'th', display_name: 'TH in Multi-Syllable', word: 'therefore', pronounce: 'ˈðɛərfɔːr', skill: 'th_sounds', hint: 'Say "therefore" — voiced TH start, clear R in middle', difficulty: 'hard' }
+];
+
 function DiagnosticModal({ user, progress, setProgress, onClose }) {
-  const [questions, setQuestions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [questions, setQuestions] = useState(FULL_DIAGNOSTIC_15);
+  const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'report'
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
+  const [liveHeard, setLiveHeard] = useState('');
 
   const recorderRef = useRef(null);
   const timerRef = useRef(null);
-  const silenceTimerRef = useRef(null);
-  const analyserRef = useRef(null);
-  const audioCtxRef = useRef(null);
+  const recognitionRef = useRef(null);
   const silenceDetectRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const heardRef = useRef('');
 
-  const DEFAULT_DIAGNOSTIC = [
-    { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', hint: 'Say "map" — press lips together for M', difficulty: 'easy' },
-    { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', hint: 'Say "ball" — pop lips apart for B', difficulty: 'easy' },
-    { sound: 'th', display_name: 'TH Sound', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" — tongue between teeth for TH', difficulty: 'medium' },
-    { sound: 'v', display_name: 'V vs W', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', hint: 'Say "very" — upper teeth on lower lip', difficulty: 'medium' },
-    { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', hint: 'Say "red" — curl tongue back for R', difficulty: 'easy' }
-  ];
-
-  // ── Load questions (all 15 from backend) ──────────────────────────────────
   useEffect(() => {
     fetchDiagnosticQuestions()
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setQuestions(data); // use ALL questions from backend (15)
-        } else {
-          setQuestions(DEFAULT_DIAGNOSTIC);
+        if (Array.isArray(data) && data.length >= 10) {
+          setQuestions(data);
         }
       })
-      .catch(() => setQuestions(DEFAULT_DIAGNOSTIC))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        // Keep FULL_DIAGNOSTIC_15 fallback
+      });
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
-      if (audioCtxRef.current) audioCtxRef.current.close();
+      cleanupAll();
     };
   }, []);
 
-  // ── Auto-stop: silence detection via Web Audio API ─────────────────────────
+  function cleanupAll() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch {}
+      audioCtxRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+  }
+
+  // ── Start Silence Detection for Auto-Stop ──────────────────────────────────
   function startSilenceDetection(stream) {
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioContext();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.3;
+      analyser.smoothingTimeConstant = 0.2;
       source.connect(analyser);
-      analyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.fftSize);
-      let speechDetected = false;
-      let silenceStart = null;
-      const SPEECH_THRESHOLD = 15;    // RMS level to count as speech
-      const SILENCE_AFTER_MS = 1800;  // auto-stop after 1.8s of silence post-speech
+      let userStartedSpeaking = false;
+      let silenceStartTime = null;
+      const SPEECH_RMS_THRESHOLD = 12;
+      const SILENCE_DURATION_MS = 1400; // Auto-stop after 1.4s of silence after speaking
 
-      function tick() {
+      function checkAudio() {
+        if (status === 'processing') return;
         analyser.getByteTimeDomainData(dataArray);
-        // Compute RMS
         let sumSq = 0;
         for (let i = 0; i < dataArray.length; i++) {
-          const v = (dataArray[i] - 128) / 128;
-          sumSq += v * v;
+          const norm = (dataArray[i] - 128) / 128;
+          sumSq += norm * norm;
         }
         const rms = Math.sqrt(sumSq / dataArray.length) * 100;
 
-        if (rms > SPEECH_THRESHOLD) {
-          speechDetected = true;
-          silenceStart = null; // reset silence timer on each speech frame
-        } else if (speechDetected) {
-          // User was speaking, now silence detected
-          if (!silenceStart) silenceStart = Date.now();
-          else if (Date.now() - silenceStart > SILENCE_AFTER_MS) {
-            // Auto-stop after sustained silence
+        if (rms > SPEECH_RMS_THRESHOLD) {
+          userStartedSpeaking = true;
+          silenceStartTime = null;
+        } else if (userStartedSpeaking) {
+          if (!silenceStartTime) {
+            silenceStartTime = Date.now();
+          } else if (Date.now() - silenceStartTime > SILENCE_DURATION_MS) {
+            // User finished speaking! Auto-stop recording now
             silenceDetectRef.current = null;
             stopAndEvaluate();
             return;
           }
         }
-        silenceDetectRef.current = requestAnimationFrame(tick);
+        silenceDetectRef.current = requestAnimationFrame(checkAudio);
       }
-      silenceDetectRef.current = requestAnimationFrame(tick);
+      silenceDetectRef.current = requestAnimationFrame(checkAudio);
     } catch (e) {
-      console.warn('Silence detection unavailable:', e);
+      console.warn('Silence detection error:', e);
     }
   }
 
-  function stopSilenceDetection() {
-    if (silenceDetectRef.current) {
-      cancelAnimationFrame(silenceDetectRef.current);
-      silenceDetectRef.current = null;
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
-  }
-
-  // ── Recording start ────────────────────────────────────────────────────────
+  // ── Start Recording + Web Speech Recognition ──────────────────────────────
   async function startRecording() {
     setError('');
+    setLiveHeard('');
+    heardRef.current = '';
+
     try {
       recorderRef.current = new AudioRecorder();
       const stream = await recorderRef.current.start();
       setStatus('recording');
       setRecordingSeconds(0);
+
       timerRef.current = setInterval(() => {
-        setRecordingSeconds((s) => s + 1);
+        setRecordingSeconds((s) => {
+          if (s >= 7) {
+            // Safety timeout at 7s
+            stopAndEvaluate();
+            return s;
+          }
+          return s + 1;
+        });
       }, 1000);
-      // Start silence detection on the same mic stream
+
+      // Start Web Audio silence detection
       if (stream) startSilenceDetection(stream);
+
+      // Start Browser Speech Recognition in parallel for real-time fallback
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRec) {
+        try {
+          const rec = new SpeechRec();
+          rec.continuous = false;
+          rec.interimResults = true;
+          rec.lang = 'en-US';
+          rec.onresult = (evt) => {
+            let transcript = '';
+            for (let i = evt.resultIndex; i < evt.results.length; ++i) {
+              transcript += evt.results[i][0].transcript;
+            }
+            const clean = transcript.trim().toLowerCase();
+            if (clean) {
+              setLiveHeard(clean);
+              heardRef.current = clean;
+            }
+          };
+          rec.onerror = () => {};
+          rec.onend = () => {};
+          rec.start();
+          recognitionRef.current = rec;
+        } catch {}
+      }
     } catch (e) {
-      setError(e.message || 'Microphone access failed. Please allow microphone permission.');
+      setError(e.message || 'Microphone access failed. Please grant mic permissions.');
     }
   }
 
-  // ── Recording stop + evaluate ──────────────────────────────────────────────
+  // ── Stop Recording & Evaluate ─────────────────────────────────────────────
   async function stopAndEvaluate() {
     if (!recorderRef.current || status === 'processing') return;
-    if (timerRef.current) clearInterval(timerRef.current);
-    stopSilenceDetection();
+    cleanupAll();
     setStatus('processing');
+
+    const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
+    const targetWord = (currentQ.word || '').trim().toLowerCase();
 
     try {
       const audioBlob = await recorderRef.current.stop();
-      const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
+      let evalData = null;
 
-      let evalData;
+      // 1. Try Backend evaluation first
       try {
         evalData = await evaluateDiagnosticSound(audioBlob, currentIndex);
       } catch (err) {
-        // Backend unreachable — mark as unevaluated (no free marks)
+        evalData = null;
+      }
+
+      // 2. Client-side evaluation fallback (if backend offline/unreachable on Vercel)
+      if (!evalData || typeof evalData.score !== 'number') {
+        const spoken = (heardRef.current || liveHeard || '').trim().toLowerCase();
+        let calcScore = 0.0;
+        let detected = false;
+
+        if (spoken) {
+          if (spoken === targetWord || spoken.includes(targetWord)) {
+            calcScore = 0.92; // Clear accurate word
+            detected = true;
+          } else if (
+            targetWord.startsWith(spoken.slice(0, 3)) ||
+            spoken.startsWith(targetWord.slice(0, 3))
+          ) {
+            calcScore = 0.72; // Close approximation
+            detected = true;
+          } else {
+            calcScore = 0.20; // Wrong word spoken
+            detected = false;
+          }
+        } else {
+          // No speech heard at all
+          calcScore = 0.0;
+          detected = false;
+        }
+
         evalData = {
           display_name: currentQ.display_name,
           sound: currentQ.sound,
           word: currentQ.word,
           pronounce: currentQ.pronounce,
-          skill: currentQ.skill,
-          score: 0.0,
-          detected: false,
-          spoken: []
+          skill: currentQ.skill || 'consonants',
+          score: calcScore,
+          detected: detected,
+          spoken_word: spoken,
+          spoken: spoken ? [spoken] : []
         };
       }
 
       const nextResults = [...results, evalData];
       setResults(nextResults);
+      setLiveHeard('');
 
       if (currentIndex + 1 < questions.length) {
         setCurrentIndex(currentIndex + 1);
@@ -1488,28 +1561,23 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         generateFinalReport(nextResults);
       }
     } catch (e) {
-      setError(e.message || 'Audio evaluation failed.');
+      setError(e.message || 'Evaluation error.');
       setStatus('idle');
     }
   }
 
-  // ── Report generation — computed from ACTUAL per-question scores ───────────
-  // FIX: We compute the report locally from the real evalData scores.
-  // This means 0% only if the user truly scored 0 on every question.
-  // We still try the backend report endpoint but ALWAYS fall back to local computation.
+  // ── Build Accurate Diagnostic Report ──────────────────────────────────────
   async function generateFinalReport(allResults) {
     setStatus('processing');
     try {
       let rep;
       try {
         rep = await fetchDiagnosticReport(allResults);
-        // Sanity check: if backend gives 0% but we have scores > 0, use local
         const localOverall = computeLocalOverall(allResults);
-        if ((rep.overall_score === 0 || rep.overall_score == null) && localOverall > 0) {
+        if ((!rep || rep.overall_score === 0 || rep.overall_score == null) && localOverall > 0) {
           rep = buildLocalReport(allResults);
         }
       } catch {
-        // Backend unavailable — build accurate report from local per-question scores
         rep = buildLocalReport(allResults);
       }
       setReport(rep);
@@ -1520,18 +1588,15 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     }
   }
 
-  // Compute overall % from actual per-question score values
   function computeLocalOverall(allResults) {
     if (!allResults.length) return 0;
     const total = allResults.reduce((sum, r) => sum + (r.score || 0), 0);
     return Math.round((total / allResults.length) * 100);
   }
 
-  // Build a full report object from actual per-question evalData
   function buildLocalReport(allResults) {
-    // Group scores by skill
     const skillGroups = {};
-    allResults.forEach(r => {
+    allResults.forEach((r) => {
       const skill = r.skill || 'consonants';
       if (!skillGroups[skill]) skillGroups[skill] = [];
       skillGroups[skill].push(r.score || 0);
@@ -1547,18 +1612,15 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     const scoreValues = Object.values(pronunciation_scores);
     const overall_score = scoreValues.length
       ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length)
-      : 0;
+      : computeLocalOverall(allResults);
 
     const SKILL_LABELS = {
       consonants: 'Consonant Clarity',
       th_sounds: 'TH Sound Precision',
       vw_confusion: 'V vs W Distinction',
       rl_confusion: 'R vs L Distinction',
-      sh_confusion: 'SH Sound',
-      vowels: 'Vowel Accuracy',
-      long_vowel: 'Long Vowels',
-      short_vowel: 'Short Vowels',
-      vowel_accuracy: 'Vowel Precision'
+      sh_confusion: 'SH Sound Mastery',
+      vowels: 'Vowel Accuracy'
     };
 
     const strengths = Object.entries(pronunciation_scores)
@@ -1569,41 +1631,30 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       .filter(([, v]) => v < 70)
       .map(([k]) => SKILL_LABELS[k] || k.replace('_', ' '));
 
-    // Build recommended path from weaknesses
     const recommended_learning_path = [];
     if (pronunciation_scores.th_sounds != null && pronunciation_scores.th_sounds < 70) {
-      recommended_learning_path.push('Practice TH sounds — tongue tip lightly between teeth');
+      recommended_learning_path.push('Practice TH sound placement — tongue tip between teeth');
     }
     if (pronunciation_scores.vw_confusion != null && pronunciation_scores.vw_confusion < 70) {
-      recommended_learning_path.push('Distinguish V from W — teeth on lip vs rounded lips');
+      recommended_learning_path.push('Master V vs W lip articulation in Stage 2');
     }
     if (pronunciation_scores.rl_confusion != null && pronunciation_scores.rl_confusion < 70) {
-      recommended_learning_path.push('Practice R and L — tongue curl vs tongue tip touch');
+      recommended_learning_path.push('Refine R vs L liquid tongue curls in Stage 3');
     }
     if (recommended_learning_path.length === 0) {
-      recommended_learning_path.push('Keep practising through gamified Stage 2 challenges');
-      recommended_learning_path.push('Focus on long words and multi-syllable pronunciation');
+      recommended_learning_path.push('Progress through Stage 2 & 3 speaking quests');
+      recommended_learning_path.push('Practice complex blend words for full fluency');
     }
-
-    const best_skill = scoreValues.length
-      ? Object.entries(pronunciation_scores).sort(([,a],[,b]) => b-a)[0]?.[0]
-      : null;
-    const weakest_skill = scoreValues.length
-      ? Object.entries(pronunciation_scores).sort(([,a],[,b]) => a-b)[0]?.[0]
-      : null;
 
     return {
       overall_score,
       pronunciation_scores,
-      strengths: strengths.length ? strengths : ['Good effort — keep practising!'],
-      weaknesses: weaknesses.length ? weaknesses : [],
-      recommended_learning_path,
-      best_skill,
-      weakest_skill
+      strengths: strengths.length ? strengths : ['Basic Vowel Recognition'],
+      weaknesses: weaknesses.length ? weaknesses : ['Consonant Precision'],
+      recommended_learning_path
     };
   }
 
-  // ── Apply placement ────────────────────────────────────────────────────────
   function applyPlacement() {
     if (!report) return;
     const scoreVal = report.overall_score || 0;
@@ -1630,10 +1681,13 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     onClose();
   }
 
-  const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
-  const progressPct = questions.length > 0 ? Math.round((currentIndex / questions.length) * 100) : 0;
-  const difficultyColor = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' };
-  const diffColor = difficultyColor[currentQ.difficulty] || '#94a3b8';
+  const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
+  const progressPct = questions.length > 0 ? Math.round(((currentIndex) / questions.length) * 100) : 0;
+  const difficultyBadge = {
+    easy: { label: '🟢 Easy', color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
+    medium: { label: '🟡 Medium', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    hard: { label: '🔴 Hard', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' }
+  }[currentQ.difficulty || 'easy'];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1645,20 +1699,20 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
           <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
             🎯 Placement Diagnostic Assessment
           </h2>
-          <small style={{ color: '#94a3b8' }}>Personalized AI evaluation of your pronunciation strengths &amp; weaknesses</small>
+          <small style={{ color: '#94a3b8' }}>15-Question Comprehensive Pronunciation &amp; Sound Mastery Test</small>
         </div>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
             <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
-            Loading diagnostic assessment modules...
+            Loading assessment modules...
           </div>
         ) : status === 'report' && report ? (
           /* ── DIAGNOSTIC REPORT VIEW ── */
           <div>
             <div style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(99,102,241,0.12))', border: '1px solid rgba(14,165,233,0.3)', borderRadius: '16px', padding: '1.2rem', textAlign: 'center', marginBottom: '1.2rem' }}>
               <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Overall Diagnostic Score</span>
-              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: report.overall_score >= 70 ? '#10b981' : '#f59e0b', margin: '0.2rem 0' }}>
+              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: report.overall_score >= 70 ? '#10b981' : report.overall_score >= 45 ? '#f59e0b' : '#ef4444', margin: '0.2rem 0' }}>
                 {report.overall_score}%
               </div>
               <div style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
@@ -1727,7 +1781,10 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             <div style={{ marginBottom: '1.2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.4rem' }}>
                 <span>Question {currentIndex + 1} of {questions.length}</span>
-                <span>{progressPct}% Completed</span>
+                <span style={{ color: difficultyBadge.color, background: difficultyBadge.bg, padding: '0.15rem 0.5rem', borderRadius: '8px' }}>
+                  {difficultyBadge.label}
+                </span>
+                <span>{progressPct}% Done</span>
               </div>
               <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg, #0ea5e9, #6366f1)', transition: 'width 0.3s' }} />
@@ -1739,15 +1796,21 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               <span style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
                 {currentQ.display_name || currentQ.skill}
               </span>
-              <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#fff', margin: '0.6rem 0 0.2rem 0', letterSpacing: '0.02em' }}>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', margin: '0.6rem 0 0.2rem 0', letterSpacing: '0.02em' }}>
                 "{currentQ.word}"
               </div>
               <div style={{ color: '#a5b4fc', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '0.6rem' }}>
                 /{currentQ.pronounce || currentQ.sound}/
               </div>
               <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.84rem' }}>
-                💡 {currentQ.hint || `Speak the target word "${currentQ.word}" clearly into your microphone.`}
+                💡 {currentQ.hint || `Speak "${currentQ.word}" clearly into your microphone.`}
               </p>
+
+              {liveHeard && (
+                <div style={{ marginTop: '0.8rem', background: 'rgba(56,189,248,0.1)', border: '1px dashed rgba(56,189,248,0.3)', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.82rem', color: '#38bdf8' }}>
+                  🗣️ Heard: <strong>"{liveHeard}"</strong>
+                </div>
+              )}
             </div>
 
             {error && <div className="error-box" style={{ marginBottom: '1rem' }}>{error}</div>}
@@ -1756,22 +1819,27 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
               {status === 'processing' ? (
                 <div style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.9rem' }}>
-                  ⏳ Evaluating phoneme sound...
+                  ⏳ Evaluating speech accuracy...
                 </div>
               ) : status === 'recording' ? (
-                <button
-                  type="button"
-                  onClick={stopAndEvaluate}
-                  style={{
-                    background: '#ef4444', color: '#fff', border: 'none',
-                    padding: '0.8rem 1.8rem', borderRadius: '999px', fontWeight: 800,
-                    fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex',
-                    alignItems: 'center', gap: '0.6rem', boxShadow: '0 0 20px rgba(239,68,68,0.4)'
-                  }}
-                >
-                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fff', animation: 'pulse 1s infinite' }} />
-                  Recording ({recordingSeconds}s) — Click to Submit
-                </button>
+                <div>
+                  <button
+                    type="button"
+                    onClick={stopAndEvaluate}
+                    style={{
+                      background: '#ef4444', color: '#fff', border: 'none',
+                      padding: '0.8rem 1.8rem', borderRadius: '999px', fontWeight: 800,
+                      fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex',
+                      alignItems: 'center', gap: '0.6rem', boxShadow: '0 0 20px rgba(239,68,68,0.4)'
+                    }}
+                  >
+                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fff', animation: 'pulse 1s infinite' }} />
+                    Recording ({recordingSeconds}s) — Click or Pause to Submit
+                  </button>
+                  <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.4rem' }}>
+                    ⚡ Auto-stops automatically when you finish speaking!
+                  </div>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -1793,7 +1861,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               <button
                 type="button"
                 onClick={() => {
-                  const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
+                  const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
                   const skippedEval = {
                     display_name: currentQ.display_name,
                     sound: currentQ.sound,
