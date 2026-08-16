@@ -122,3 +122,31 @@ export async function translateInterview(audioBlob, question, accent = 'indian')
   });
   return _parseJSON(response);
 }
+
+// ── DIAGNOSTIC ASSESSMENT API HELPERS ───────────────────────────────────────
+export async function fetchDiagnosticQuestions() {
+  const response = await fetch(`${API_BASE}/diagnostic/questions`);
+  return _parseJSON(response);
+}
+
+export async function evaluateDiagnosticSound(audioBlob, index) {
+  const formData = new FormData();
+  formData.append('audio', audioBlob, `diag_${index}.wav`);
+  formData.append('index', index.toString());
+
+  const response = await fetch(`${API_BASE}/diagnostic`, {
+    method: 'POST',
+    body: formData
+  });
+  return _parseJSON(response);
+}
+
+export async function fetchDiagnosticReport(results) {
+  const response = await fetch(`${API_BASE}/diagnostic/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(results)
+  });
+  return _parseJSON(response);
+}
+

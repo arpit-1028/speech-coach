@@ -19,6 +19,26 @@ IPA_TO_INTERNAL = {
     "ɪ": "i", "i": "i",
     "ʊ": "u", "u": "u",
     "o": "o", "ɔ": "o", "ɒ": "o",
+    # long vowels
+    "iː": "ii",
+    "uː": "uu",
+    "oː": "oo",
+    "aː": "aa",
+
+    # variants
+    "eɪ": "ei",
+    "ɛ": "e",
+    "ə": "a",
+    "ɜ": "er",
+    "ɚ": "er",
+
+    # rounded vowels
+    "ɔː": "oo",
+    "ɔ": "o",
+
+    # common schwa variants
+    "əʊ": "ou",
+    "oʊ": "ou",
 
     # diphthongs
     "aɪ": "ai", "aʊ": "au", "ɔɪ": "oi", "eɪ": "e", "oʊ": "o", "əʊ": "o"

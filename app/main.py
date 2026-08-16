@@ -22,6 +22,9 @@ from app.services.tts_service import generate_audio
 from app.services.grammar_service import get_random_sentence, get_sentence_by_id
 from app.services.grammar_checker import check_grammar
 from app.services.scenario_service import generate_scenario
+from app.services.diagnostic_service import SOUND_TESTS, evaluate_sound, build_report
+from typing import List
+from fastapi import Body
 
 app = FastAPI()
 
@@ -402,3 +405,53 @@ async def get_mock_analytics():
         "most_improved_sound": "TH",
         "xp_history": [10, 20, 15, 30, 25, 40, 50]
     }
+
+
+# ── DIAGNOSTIC ASSESSMENT ENDPOINTS ──────────────────────────────────────────
+@app.get("/diagnostic/questions")
+async def diagnostic_questions():
+    return SOUND_TESTS
+
+
+@app.post("/diagnostic")
+async def diagnostic_evaluate(
+    audio: UploadFile = File(...),
+    index: int = Form(...)
+):
+    if index < 0 or index >= len(SOUND_TESTS):
+        return JSONResponse(status_code=400, content={"error": "Invalid question index"})
+
+    sound_item = SOUND_TESTS[index]
+    unique_id = uuid.uuid4().hex
+    temp_path = f"diag_{unique_id}.wav"
+
+    try:
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(audio.file, buffer)
+
+        result = evaluate_sound(temp_path, sound_item)
+        return result
+    except Exception as e:
+        print("DIAGNOSTIC EVAL ERROR:", e)
+        return {
+            "display_name": sound_item.get("display_name", ""),
+            "sound": sound_item.get("sound", ""),
+            "word": sound_item.get("word", ""),
+            "pronounce": sound_item.get("pronounce", ""),
+            "skill": sound_item.get("skill", "consonants"),
+            "score": 0.0,
+            "detected": False,
+            "spoken": []
+        }
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+@app.post("/diagnostic/report")
+async def diagnostic_report(results: List[dict] = Body(...)):
+    try:
+        return build_report(results)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+

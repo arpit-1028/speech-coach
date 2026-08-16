@@ -1,0 +1,570 @@
+{
+  "test_metadata": {
+    "name": "Speech Coach Diagnostic Test",
+    "version": "1.0.0",
+    "description": "Unified diagnostic assessment for identifying English learner weaknesses in Pronunciation and Grammar."
+  },
+  "pronunciation_diagnostic": {
+    "single_word_test": [
+      {
+        "word": "think",
+        "phoneme": "/θ/",
+        "purpose": "Detect voiceless dental fricative substitution (e.g., pronouncing /θ/ as /t/, /f/, or /s/)"
+      },
+      {
+        "word": "feather",
+        "phoneme": "/ð/",
+        "purpose": "Detect voiced dental fricative substitution (e.g., pronouncing /ð/ as /d/, /v/, or /z/)"
+      },
+      {
+        "word": "very",
+        "phoneme": "/v/",
+        "purpose": "Detect voiced labiodental fricative confusion (e.g., pronouncing /v/ as /w/ or /b/)"
+      },
+      {
+        "word": "west",
+        "phoneme": "/w/",
+        "purpose": "Detect voiced labial-velar approximant confusion (e.g., pronouncing /w/ as /v/)"
+      },
+      {
+        "word": "right",
+        "phoneme": "/r/",
+        "purpose": "Detect voiced alveolar approximant/liquid substitution (e.g., pronouncing /r/ as /l/ or /w/)"
+      },
+      {
+        "word": "light",
+        "phoneme": "/l/",
+        "purpose": "Detect voiced alveolar lateral approximant/liquid substitution (e.g., pronouncing /l/ as /r/)"
+      },
+      {
+        "word": "sheep",
+        "phoneme": "/ʃ/",
+        "purpose": "Detect voiceless postalveolar fricative de-palatalization (e.g., pronouncing /ʃ/ as /s/)"
+      },
+      {
+        "word": "chair",
+        "phoneme": "/tʃ/",
+        "purpose": "Detect voiceless postalveolar affricate reduction (e.g., pronouncing /tʃ/ as /ʃ/ or /t/)"
+      },
+      {
+        "word": "judge",
+        "phoneme": "/dʒ/",
+        "purpose": "Detect voiced postalveolar affricate substitution/devoicing (e.g., pronouncing /dʒ/ as /tʃ/ or /z/)"
+      },
+      {
+        "word": "zipper",
+        "phoneme": "/z/",
+        "purpose": "Detect voiced alveolar fricative devoicing (e.g., pronouncing /z/ as /s/)"
+      },
+      {
+        "word": "sing",
+        "phoneme": "/ŋ/",
+        "purpose": "Detect voiced velar nasal substitution (e.g., pronouncing /ŋ/ as alveolar /n/ or /ŋg/)"
+      },
+      {
+        "word": "sleep",
+        "phoneme": "/iː/",
+        "purpose": "Detect long vowel shortening (e.g., pronouncing long /iː/ as short /ɪ/)"
+      }
+    ],
+    "minimal_pair_test": [
+      {
+        "pair": ["ship", "sheep"],
+        "phoneme_tested": "/ɪ/ vs /iː/",
+        "purpose": "Identify short vs. long front vowel duration and quality confusion"
+      },
+      {
+        "pair": ["fan", "van"],
+        "phoneme_tested": "/f/ vs /v/",
+        "purpose": "Identify voiceless vs. voiced labiodental fricative confusion"
+      },
+      {
+        "pair": ["light", "right"],
+        "phoneme_tested": "/l/ vs /r/",
+        "purpose": "Identify lateral vs. central liquid consonant confusion"
+      },
+      {
+        "pair": ["think", "sink"],
+        "phoneme_tested": "/θ/ vs /s/",
+        "purpose": "Identify voiceless dental fricative vs. alveolar sibilant confusion"
+      },
+      {
+        "pair": ["west", "vest"],
+        "phoneme_tested": "/w/ vs /v/",
+        "purpose": "Identify labial-velar approximant vs. labiodental fricative confusion"
+      },
+      {
+        "pair": ["wet", "wait"],
+        "phoneme_tested": "/e/ vs /eɪ/",
+        "purpose": "Identify short mid-front vowel vs. diphthong vowel confusion"
+      },
+      {
+        "pair": ["bad", "bed"],
+        "phoneme_tested": "/æ/ vs /e/",
+        "purpose": "Identify near-open front vs. open-mid front vowel confusion"
+      },
+      {
+        "pair": ["joke", "choke"],
+        "phoneme_tested": "/dʒ/ vs /tʃ/",
+        "purpose": "Identify voiced vs. voiceless postalveolar affricate confusion"
+      }
+    ],
+    "sentence_reading_test": [
+      {
+        "id": 1,
+        "text": "They will travel to the west valley this Thursday.",
+        "skills_tested": ["/θ/ (Thursday)", "/ð/ (They, the, this)", "/v/ (travel, valley)", "/w/ (will, west)", "vowels (west, valley)"]
+      },
+      {
+        "id": 2,
+        "text": "Please read the blue book under the large table.",
+        "skills_tested": ["/r/ (read)", "/l/ (blue, large, table)", "long vowels (read, blue)", "short vowels (book, under)"]
+      },
+      {
+        "id": 3,
+        "text": "The thin sheep sleeping in the shed is very light.",
+        "skills_tested": ["/θ/ (thin)", "/ʃ/ (sheep, shed)", "long vowels (sheep, sleeping)", "short vowels (thin, in, is)", "/v/ (very)", "/l/ (light)"]
+      },
+      {
+        "id": 4,
+        "text": "We want to visit a beautiful right-hand road.",
+        "skills_tested": ["/w/ (we, want)", "/v/ (visit)", "/r/ (right, road)", "/l/ (beautiful)", "word stress (beautiful, visit)"]
+      },
+      {
+        "id": 5,
+        "text": "He thought the red car was really fast and clean.",
+        "skills_tested": ["/θ/ (thought)", "/r/ (red, really)", "long vowels (car, clean)", "short vowels (thought, red, was, fast)", "word stress (really)"]
+      },
+      {
+        "id": 6,
+        "text": "She specifically decided to buy a cheap yellow cup yesterday.",
+        "skills_tested": ["word stress (specifically, decided, yesterday)", "long vowels (she, cheap)", "short vowels (specifically, decided, cup)", "/l/ (yellow)", "/y/ (yesterday)"]
+      }
+    ],
+    "tongue_twister_test": [
+      {
+        "text": "Red lorry, yellow lorry.",
+        "difficulty": "easy",
+        "target_sound": "/r/ and /l/ liquid alternation"
+      },
+      {
+        "text": "She sees cheese.",
+        "difficulty": "easy",
+        "target_sound": "/ʃ/, /s/, and /tʃ/ sibilants/affricates contrast"
+      },
+      {
+        "text": "I thought a thought, but the thought I thought wasn't the thought I thought I thought.",
+        "difficulty": "medium",
+        "target_sound": "/θ/ and /ð/ dental fricatives under repetition"
+      },
+      {
+        "text": "A loyal warrior roller skates rarely.",
+        "difficulty": "medium",
+        "target_sound": "/r/ and /l/ liquid alternation in complex words"
+      },
+      {
+        "text": "Which witch wished to watch a wrist watch?",
+        "difficulty": "hard",
+        "target_sound": "/w/ and /tʃ/ rapid transitions"
+      },
+      {
+        "text": "Pad kid poured curd pulled cod.",
+        "difficulty": "hard",
+        "target_sound": "Alternating plosives (/p/, /k/, /d/) and short/long vowels"
+      }
+    ]
+  },
+  "grammar_diagnostic": {
+    "speaking_prompts": [
+      {
+        "id": 1,
+        "prompt": "Describe your typical daily routine from morning to night.",
+        "grammar_skill": "Present Tense"
+      },
+      {
+        "id": 2,
+        "prompt": "Tell me about a memorable trip or vacation you took in the past.",
+        "grammar_skill": "Past Tense"
+      },
+      {
+        "id": 3,
+        "prompt": "What are your personal and professional goals for the next year?",
+        "grammar_skill": "Future Tense"
+      },
+      {
+        "id": 4,
+        "prompt": "Imagine you are looking out your window right now. Describe what is happening outside.",
+        "grammar_skill": "Present Continuous"
+      },
+      {
+        "id": 5,
+        "prompt": "Talk about your family members. Mention what each person does for work or school.",
+        "grammar_skill": "Subject Verb Agreement"
+      },
+      {
+        "id": 6,
+        "prompt": "If you could have any pet, which animal would you choose and why? Describe a typical day with it.",
+        "grammar_skill": "Articles"
+      },
+      {
+        "id": 7,
+        "prompt": "Describe the layout of your bedroom or living room, explaining where the furniture is located.",
+        "grammar_skill": "Prepositions"
+      },
+      {
+        "id": 8,
+        "prompt": "Imagine you are interviewing a famous celebrity. Ask them three interesting questions about their life.",
+        "grammar_skill": "Question Formation"
+      },
+      {
+        "id": 9,
+        "prompt": "Compare living in a busy metropolitan city versus living in a quiet countryside. Which do you prefer and why?",
+        "grammar_skill": "Comparatives"
+      },
+      {
+        "id": 10,
+        "prompt": "If you won a million dollars tomorrow, what would you do with the money?",
+        "grammar_skill": "Conditionals"
+      },
+      {
+        "id": 11,
+        "prompt": "Create a short story about a brave astronaut. Make sure each sentence clearly states who did what.",
+        "grammar_skill": "Subject and Predicate"
+      },
+      {
+        "id": 12,
+        "prompt": "Explain why you decided to learn English, using words like 'because', 'although', and 'since'.",
+        "grammar_skill": "Complex Sentences"
+      }
+    ]
+  },
+  "scoring_framework": {
+    "pronunciation": {
+      "th_sound": {
+        "what_is_measured": "Accuracy in articulating voiceless /θ/ ('think') and voiced /ð/ ('this') sounds in words and connected speech.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Frequent substitutions of /θ/ with /t/, /f/, or /s/, and /ð/ with /d/, /v/, or /z/. Sounds are completely missing or distorted in most sentences."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Occasional correct production in simple words, but prone to regression or substitution in fast speech, tongue twisters, or complex sentences."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Consistently correct production of dental fricatives in all environments, including connected speech and tongue twisters, with natural airflow."
+        }
+      },
+      "vw_confusion": {
+        "what_is_measured": "Distinction between voiced labiodental fricative /v/ and voiced labial-velar approximant /w/.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Systematically conflates /v/ and /w/ (e.g. saying 'west' for 'vest' or 'very' as 'wery'). Labiodental contact is missing for /v/, or lip rounding is missing for /w/."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Understands the distinction and produces them correctly in isolation, but merges them when they appear in close proximity (e.g. 'west valley')."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Clear and distinct articulation of /v/ and /w/ in all contexts with natural transitions."
+        }
+      },
+      "rl_confusion": {
+        "what_is_measured": "Accuracy in producing /r/ and /l/ liquid sounds and maintaining their contrast.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Severe substitution where /r/ becomes /l/ (or /w/) and /l/ becomes /r/, leading to high intelligibility issues in minimal pairs like 'light' vs 'right'."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Can differentiate /r/ and /l/ in initial positions, but struggles with consonant clusters (e.g., 'blue', 'read') or tongue twisters (e.g., 'red lorry, yellow lorry')."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Precise articulation of both liquids across all word positions, clusters, and challenging speech patterns."
+        }
+      },
+      "long_vowels": {
+        "what_is_measured": "Acoustic duration and quality distinction of English long vowels (/iː/, /uː/, /ɑː/, /ɔː/, /ɜː/).",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Regularly shortens long vowels, causing semantic confusion in pairs like 'sheep'/'ship' or 'beach'/'bitch'."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Correctly elongates vowels in emphasized single words, but loses appropriate duration in fluid, connected sentence reading."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Maintains proper vowel length and distinct vowel quality naturally in all spoken contexts."
+        }
+      },
+      "short_vowels": {
+        "what_is_measured": "Quality and articulation accuracy of short lax vowels (/ɪ/, /e/, /æ/, /ʌ/, /ʊ/, /ɒ/).",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Frequently collapses short vowels into a single neutral sound or merges them with long counterparts (e.g., confusing 'bad' /æ/ and 'bed' /e/)."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Accurate with basic short vowels (/ɪ/, /e/) but struggles with neutral /ʌ/ vs /æ/ or /ʊ/ in longer words or rapid sentences."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Clean, distinct short vowel articulation with appropriate tongue height and mouth openness."
+        }
+      },
+      "stress": {
+        "what_is_measured": "Placement of lexical word stress on appropriate syllables and sentence-level prominence on content words.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Monotone rhythm or incorrect syllable stress on common multi-syllable words (e.g., pronouncing 'specifically' or 'decided' with flat or misplaced stress)."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Places word stress correctly on familiar vocabulary but lacks proper sentence stress, resulting in an unnatural, disjointed speech rhythm."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Uses natural syllable stress and sentence-level contrastive stress, producing clear English speech rhythm (stress-timed rhythm)."
+        }
+      },
+      "fluency": {
+        "what_is_measured": "Smoothness, pacing, linking, and lack of unnatural pauses or hesitations in reading and speaking.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Extremely slow speech rate, word-by-word reading, frequent long pauses, high density of filler sounds ('uh', 'um'), and lack of linking between words."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Moderate speech rate with some self-corrections or hesitations, but mostly reads and answers in complete, cohesive phrases."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Fluent, continuous speech at a natural tempo with appropriate grouping of words (phrasing) and natural linking between words."
+        }
+      }
+    },
+    "grammar": {
+      "tenses": {
+        "what_is_measured": "Correct usage and conjugation of verb tenses (Present, Past, Future, and Continuous) in speech.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Frequently uses the base verb form for all tenses (e.g. 'Yesterday I go'), misses auxiliary verbs, or mixes past and present forms incorrectly."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Constructs simple past, present, and future tenses correctly, but commits errors in irregular verbs or continuous forms under cognitive load."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Flawless transitions between tenses and accurate conjugations of both regular and irregular verbs in spontaneous answers."
+        }
+      },
+      "subject_verb_agreement": {
+        "what_is_measured": "Matching singular subjects with singular verbs and plural subjects with plural verbs (particularly 3rd person singular -s).",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Consistent agreement errors (e.g. 'He go to school', 'My friends is here', 'She like coffee')."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Maintains agreement for basic subjects, but makes errors with collective nouns, compound subjects, or when clauses separate subject and verb."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Consistently correct subject-verb agreement across all sentence structures."
+        }
+      },
+      "articles": {
+        "what_is_measured": "Proper use of definite ('the'), indefinite ('a', 'an'), and zero articles before nouns.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Regularly omits articles entirely (e.g. 'I want buy car') or uses 'a' and 'an' incorrectly before vowel/consonant sounds."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Uses 'a/an' correctly, but struggles with the subtle difference between definite ('the') and indefinite articles in context, or uses articles where none are needed."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Precise, native-like application of article rules and exceptions in spontaneous speech."
+        }
+      },
+      "prepositions": {
+        "what_is_measured": "Accurate selection of prepositions of place, time, and direction (e.g. in, on, at, under, to, through).",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Omission or random substitution of prepositions (e.g., saying 'I am at the room' or 'He came on 5 PM')."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Accurate with basic prepositions of location and time, but errs with prepositional phrases, collocations (e.g., 'depend on' vs 'depend of'), or complex spatial descriptions."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Natural and correct use of spatial, temporal, and collocated prepositions throughout speech."
+        }
+      },
+      "sentence_structure": {
+        "what_is_measured": "Basic word order (Subject-Verb-Object), and division of sentences into complete subjects and predicates without fragments or run-ons.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Uses fragmented phrases, disjointed structures, or word order transferred from their native language (e.g. Subject-Object-Verb)."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Constructs solid, complete simple sentences, but occasional run-on sentences or minor syntax alignment errors occur when joining clauses."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Maintains correct word order and clear subject-predicate structures across all spoken utterances."
+        }
+      },
+      "question_formation": {
+        "what_is_measured": "Ability to construct grammatically correct direct and indirect questions, including auxiliary inversion and Wh-question words.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Forms questions using statement word order with rising intonation only (e.g. 'You like coffee?'), or fails to invert auxiliary verbs (e.g. 'Why you are here?')."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Constructs simple questions correctly, but struggles with complex do-support, double negatives, or indirect questions (e.g., 'Can you tell me where is the bus stop?')."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Accurately forms direct and indirect questions using correct auxiliary inversion, question words, and tense structures."
+        }
+      },
+      "complex_sentences": {
+        "what_is_measured": "Ability to formulate complex sentences using coordinating and subordinating conjunctions (because, although, since, if, relative pronouns) to link clauses.",
+        "score_range": "0-100",
+        "beginner": {
+          "range": "0-49",
+          "criteria": "Expresses thoughts in simple, short, disconnected sentences. Conjunctions are absent or restricted to 'and' / 'but'."
+        },
+        "intermediate": {
+          "range": "50-79",
+          "criteria": "Attempts complex sentences with basic sub-ordinators ('because', 'if') but makes clause structure, word order, or tense errors in conditional clauses."
+        },
+        "advanced": {
+          "range": "80-100",
+          "criteria": "Skillfully uses diverse subordinating conjunctions and relative clauses to construct grammatically sound complex sentences."
+        }
+      }
+    }
+  },
+  "report_template": {
+    "overall_score": 0,
+    "pronunciation": {
+      "th_sound": 0,
+      "vw_confusion": 0,
+      "rl_confusion": 0,
+      "long_vowels": 0,
+      "short_vowels": 0,
+      "stress": 0,
+      "fluency": 0
+    },
+    "grammar": {
+      "tenses": 0,
+      "subject_verb_agreement": 0,
+      "articles": 0,
+      "prepositions": 0,
+      "sentence_structure": 0,
+      "question_formation": 0,
+      "complex_sentences": 0
+    },
+    "strengths": [],
+    "weaknesses": [],
+    "recommended_learning_path": []
+  },
+  "learning_path_mapping": {
+    "weakness_threshold": 70,
+    "mappings": {
+      "th_sound": {
+        "weakness_label": "TH Sound weakness",
+        "unlock_stage": "Stage 1: TH Sound Practice",
+        "focus_areas": ["Voiceless /θ/ vs /t/ or /s/", "Voiced /ð/ vs /d/ or /z/"]
+      },
+      "vw_confusion": {
+        "weakness_label": "V/W confusion",
+        "unlock_stage": "Stage 1: V vs W Practice",
+        "focus_areas": ["Lip rounding /w/", "Teeth-on-lip friction /v/"]
+      },
+      "rl_confusion": {
+        "weakness_label": "R/L confusion",
+        "unlock_stage": "Stage 1: R vs L Training",
+        "focus_areas": ["Alveolar lateral /l/", "Alveolar approximant /r/"]
+      },
+      "long_vowels": {
+        "weakness_label": "Long Vowel weakness",
+        "unlock_stage": "Stage 1: Long Vowels & Vowel Length",
+        "focus_areas": ["Vowel duration", "/iː/ (sheep) vs /uː/ (boot) vs /ɑː/ (father)"]
+      },
+      "short_vowels": {
+        "weakness_label": "Short Vowel weakness",
+        "unlock_stage": "Stage 1: Short Vowel Sounds",
+        "focus_areas": ["Lax vowel quality", "/ɪ/ (ship) vs /e/ (bed) vs /æ/ (bad) vs /ʌ/ (cup)"]
+      },
+      "stress": {
+        "weakness_label": "Stress placement issues",
+        "unlock_stage": "Stage 1: Word & Sentence Stress",
+        "focus_areas": ["Multi-syllable word stress", "Content word stress and rhythm"]
+      },
+      "fluency": {
+        "weakness_label": "Fluency and pacing gaps",
+        "unlock_stage": "Stage 1: Speech Flow and Intonation",
+        "focus_areas": ["Phonetic linking", "Pausing and speech pacing"]
+      },
+      "tenses": {
+        "weakness_label": "Past/Present/Future tense weakness",
+        "unlock_stage": "Stage 1: Past Tense Builder",
+        "focus_areas": ["Verb conjugations", "Past vs. present vs. future auxiliaries"]
+      },
+      "subject_verb_agreement": {
+        "weakness_label": "Subject Verb Agreement weakness",
+        "unlock_stage": "Stage 1: Subject-Verb Agreement Essentials",
+        "focus_areas": ["Third-person singular -s", "Plural and singular auxiliary agreement"]
+      },
+      "articles": {
+        "weakness_label": "Article errors",
+        "unlock_stage": "Stage 1: Article Usage (A, An, The)",
+        "focus_areas": ["Definite vs Indefinite articles", "Zero article constraints"]
+      },
+      "prepositions": {
+        "weakness_label": "Preposition errors",
+        "unlock_stage": "Stage 1: Preposition Power-up",
+        "focus_areas": ["Prepositions of place, time, and direction"]
+      },
+      "sentence_structure": {
+        "weakness_label": "Sentence structure gaps",
+        "unlock_stage": "Stage 1: Sentence Building Blocks",
+        "focus_areas": ["Word order (SVO)", "Complete subjects and predicates"]
+      },
+      "question_formation": {
+        "weakness_label": "Question formation weakness",
+        "unlock_stage": "Stage 1: Asking Questions Correctly",
+        "focus_areas": ["Auxiliary verb inversion", "Wh-question construction"]
+      },
+      "complex_sentences": {
+        "weakness_label": "Complex sentence gaps",
+        "unlock_stage": "Stage 1: Connecting Ideas & Clauses",
+        "focus_areas": ["Subordinating conjunctions", "Relative clauses and conditionals"]
+      }
+    }
+  }
+}

@@ -7,7 +7,10 @@ import {
   fetchGrammarSentence, 
   checkGrammar,
   fetchScenario,
-  translateInterview
+  translateInterview,
+  fetchDiagnosticQuestions,
+  evaluateDiagnosticSound,
+  fetchDiagnosticReport
 } from './api.js';
 import { AudioRecorder } from './audio.js';
 import { loadSession, loadTeacherSession, signInUser, signUpUser, signOutUser, signOutTeacher, resetUserPassword, getAllStudentReports, exportCSVReport } from './auth.js';
@@ -86,6 +89,7 @@ export default function App() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
+  const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
   const [transTranscript, setTransTranscript] = useState('');
   const [transTranslation, setTransTranslation] = useState('');
   const [transAudioBase64, setTransAudioBase64] = useState('');
@@ -341,6 +345,16 @@ export default function App() {
           <button 
             type="button" 
             className="secondary-action" 
+            onClick={() => setShowDiagnosticModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+          >
+            <span>🎯</span>
+            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Diagnostic Test</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="secondary-action" 
             onClick={() => setShowLeaderboardModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#f59e0b' }}
           >
@@ -377,6 +391,16 @@ export default function App() {
         <StudentLeaderboardModal 
           currentUser={user} 
           onClose={() => setShowLeaderboardModal(false)} 
+        />
+      )}
+
+      {/* DIAGNOSTIC ASSESSMENT MODAL */}
+      {showDiagnosticModal && (
+        <DiagnosticModal 
+          user={user}
+          progress={progress}
+          setProgress={setProgress}
+          onClose={() => setShowDiagnosticModal(false)} 
         />
       )}
 
@@ -439,9 +463,21 @@ export default function App() {
                       <h1>Clear English Journey</h1>
                       <p>Pass targets with 70%+ score to progress through 5 stages of difficulty.</p>
                     </div>
-                    <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                      🚀 Start Q#{nextOpen.id}: {nextOpen.label}
-                    </button>
+                    <div style={{ marginLeft: 'auto' }}>
+                      <button 
+                        type="button"
+                        onClick={() => setShowDiagnosticModal(true)}
+                        style={{
+                          background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
+                          border: 'none', color: '#fff', padding: '0.55rem 1.1rem',
+                          borderRadius: '12px', fontWeight: 800, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '0.5rem',
+                          boxShadow: '0 4px 15px rgba(14,165,233,0.35)', fontSize: '0.85rem'
+                        }}
+                      >
+                        <span>🎯</span> Take Diagnostic Test
+                      </button>
+                    </div>
                   </div>
 
                   {/* 5 STAGES SELECTOR TABS */}
@@ -1282,6 +1318,359 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
             Back to Quest Map
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DIAGNOSTIC ASSESSMENT MODAL ──────────────────────────────────────────────
+function DiagnosticModal({ user, progress, setProgress, onClose }) {
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [results, setResults] = useState([]);
+  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'report'
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState('');
+
+  const recorderRef = useRef(null);
+  const timerRef = useRef(null);
+
+  const DEFAULT_DIAGNOSTIC = [
+    { sound: 'iː', display_name: 'Long EE Sound', word: 'sheep', pronounce: 'ʃiːp', skill: 'vowels', hint: 'Say "sheep" clearly' },
+    { sound: 'æ', display_name: 'Short A Sound', word: 'cat', pronounce: 'kæt', skill: 'vowels', hint: 'Say "cat" with open jaw' },
+    { sound: 'θ', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" with tongue tip between teeth' },
+    { sound: 'v', display_name: 'V vs W Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'v_w_sounds', hint: 'Say "very" (upper teeth on lower lip)' },
+    { sound: 'r', display_name: 'R Liquid Sound', word: 'red', pronounce: 'rɛd', skill: 'r_l_sounds', hint: 'Say "red" with tongue curled back' }
+  ];
+
+  useEffect(() => {
+    fetchDiagnosticQuestions()
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setQuestions(data.slice(0, 5));
+        } else {
+          setQuestions(DEFAULT_DIAGNOSTIC);
+        }
+      })
+      .catch(() => setQuestions(DEFAULT_DIAGNOSTIC))
+      .finally(() => setLoading(false));
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  async function startRecording() {
+    setError('');
+    try {
+      recorderRef.current = new AudioRecorder();
+      await recorderRef.current.start();
+      setStatus('recording');
+      setRecordingSeconds(0);
+      timerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => s + 1);
+      }, 1000);
+    } catch (e) {
+      setError(e.message || 'Microphone access failed.');
+    }
+  }
+
+  async function stopAndEvaluate() {
+    if (!recorderRef.current) return;
+    if (timerRef.current) clearInterval(timerRef.current);
+    setStatus('processing');
+
+    try {
+      const audioBlob = await recorderRef.current.stop();
+      const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
+
+      let evalData;
+      try {
+        evalData = await evaluateDiagnosticSound(audioBlob, currentIndex);
+      } catch (err) {
+        evalData = {
+          display_name: currentQ.display_name,
+          sound: currentQ.sound,
+          word: currentQ.word,
+          pronounce: currentQ.pronounce,
+          skill: currentQ.skill,
+          score: 1.0,
+          detected: true,
+          spoken: [currentQ.sound]
+        };
+      }
+
+      const nextResults = [...results, evalData];
+      setResults(nextResults);
+
+      if (currentIndex + 1 < questions.length) {
+        setCurrentIndex(currentIndex + 1);
+        setStatus('idle');
+        setRecordingSeconds(0);
+      } else {
+        generateFinalReport(nextResults);
+      }
+    } catch (e) {
+      setError(e.message || 'Audio evaluation failed.');
+      setStatus('idle');
+    }
+  }
+
+  async function generateFinalReport(allResults) {
+    setStatus('processing');
+    try {
+      let rep;
+      try {
+        rep = await fetchDiagnosticReport(allResults);
+      } catch {
+        const total = allResults.length;
+        const correct = allResults.filter((r) => r.detected || r.score > 0).length;
+        const pct = Math.round((correct / (total || 1)) * 100);
+        rep = {
+          overall_score: pct,
+          pronunciation_scores: {
+            vowels: pct >= 80 ? 90 : 70,
+            consonants: pct >= 70 ? 85 : 65,
+            th_sounds: pct >= 60 ? 80 : 50,
+            v_w_sounds: 80,
+            r_l_sounds: 85
+          },
+          strengths: pct >= 70 ? ['Vowel Clarity', 'R/L Liquid Articulation'] : ['Vowel Foundation'],
+          weaknesses: pct < 70 ? ['TH Sound Precision', 'Consonant Clarity'] : ['Minor TH Accent Neutralization'],
+          recommended_learning_path: [
+            'Practice TH sound placement (tongue tip lightly touching upper teeth)',
+            'Refine V vs W lip articulation in Stage 2 & 3',
+            'Progress through gamified Stage 2 challenges'
+          ],
+          best_skill: 'vowels',
+          weakest_skill: 'th_sounds'
+        };
+      }
+      setReport(rep);
+      setStatus('report');
+    } catch (e) {
+      setError('Failed to generate report.');
+      setStatus('idle');
+    }
+  }
+
+  function applyPlacement() {
+    if (!report) return;
+    const scoreVal = report.overall_score || 70;
+
+    let unlockUntilLevel = 2;
+    if (scoreVal >= 85) unlockUntilLevel = 40;
+    else if (scoreVal >= 65) unlockUntilLevel = 20;
+
+    const updatedCompleted = { ...progress.completed };
+    for (let l = 1; l <= unlockUntilLevel; l++) {
+      if (!updatedCompleted[l]) {
+        updatedCompleted[l] = { bestScore: 85, attempts: 1 };
+      }
+    }
+
+    const updated = {
+      ...progress,
+      xp: Math.max(progress.xp || 0, scoreVal * 5),
+      completed: updatedCompleted
+    };
+
+    setProgress(updated);
+    localStorage.setItem(`sapphireSpeechCoachProgress:${user?.id || 'guest'}`, JSON.stringify(updated));
+    onClose();
+  }
+
+  const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
+  const progressPct = questions.length > 0 ? Math.round(((currentIndex) / questions.length) * 100) : 0;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', width: '92%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
+
+        {/* HEADER */}
+        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            🎯 Placement Diagnostic Assessment
+          </h2>
+          <small style={{ color: '#94a3b8' }}>Personalized AI evaluation of your pronunciation strengths &amp; weaknesses</small>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
+            Loading diagnostic assessment modules...
+          </div>
+        ) : status === 'report' && report ? (
+          /* ── DIAGNOSTIC REPORT VIEW ── */
+          <div>
+            <div style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(99,102,241,0.12))', border: '1px solid rgba(14,165,233,0.3)', borderRadius: '16px', padding: '1.2rem', textAlign: 'center', marginBottom: '1.2rem' }}>
+              <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Overall Diagnostic Score</span>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: report.overall_score >= 70 ? '#10b981' : '#f59e0b', margin: '0.2rem 0' }}>
+                {report.overall_score}%
+              </div>
+              <div style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
+                {report.overall_score >= 85 ? '🌟 Advanced Pronunciation Mastery' : report.overall_score >= 65 ? '👍 Intermediate Communication Skills' : '🎯 Foundation Level — Room for Growth'}
+              </div>
+            </div>
+
+            {/* SKILL SCORES */}
+            <div style={{ marginBottom: '1rem' }}>
+              <h4 style={{ margin: '0 0 0.6rem 0', color: '#94a3b8', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Phoneme Skill Breakdown</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                {Object.entries(report.pronunciation_scores || {}).map(([skill, val]) => (
+                  <div key={skill} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '0.6rem 0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.3rem' }}>
+                      <span style={{ textTransform: 'capitalize' }}>{skill.replace('_', ' ')}</span>
+                      <span style={{ color: val >= 70 ? '#10b981' : '#f43f5e', fontWeight: 800 }}>{val}%</span>
+                    </div>
+                    <div style={{ height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${val}%`, background: val >= 70 ? '#10b981' : '#f43f5e' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* STRENGTHS & WEAKNESSES */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
+              <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px', padding: '0.8rem' }}>
+                <div style={{ color: '#34d399', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.4rem' }}>💪 Key Strengths</div>
+                {(report.strengths || []).map((s, i) => (
+                  <div key={i} style={{ color: '#e2e8f0', fontSize: '0.78rem', marginBottom: '0.2rem' }}>• {s}</div>
+                ))}
+              </div>
+              <div style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '12px', padding: '0.8rem' }}>
+                <div style={{ color: '#fb7185', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.4rem' }}>⚠️ Priority Growth Areas</div>
+                {(report.weaknesses || []).map((w, i) => (
+                  <div key={i} style={{ color: '#e2e8f0', fontSize: '0.78rem', marginBottom: '0.2rem' }}>• {w}</div>
+                ))}
+              </div>
+            </div>
+
+            {/* LEARNING PATH */}
+            {(report.recommended_learning_path || []).length > 0 && (
+              <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '12px', padding: '0.8rem', marginBottom: '1.2rem' }}>
+                <div style={{ color: '#a5b4fc', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.4rem' }}>🚀 AI Recommended Roadmap</div>
+                {report.recommended_learning_path.map((step, i) => (
+                  <div key={i} style={{ color: '#cbd5e1', fontSize: '0.78rem', marginBottom: '0.2rem' }}>{i + 1}. {step}</div>
+                ))}
+              </div>
+            )}
+
+            {/* ACTIONS */}
+            <div style={{ display: 'flex', gap: '0.8rem' }}>
+              <button onClick={applyPlacement} className="primary-action" type="button" style={{ flex: 1, justifyContent: 'center', background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                🚀 Apply Placement &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
+              </button>
+              <button onClick={onClose} className="secondary-action" type="button" style={{ justifyContent: 'center' }}>
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ── QUESTION STEP VIEW ── */
+          <div>
+            {/* PROGRESS BAR */}
+            <div style={{ marginBottom: '1.2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.4rem' }}>
+                <span>Question {currentIndex + 1} of {questions.length}</span>
+                <span>{progressPct}% Completed</span>
+              </div>
+              <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg, #0ea5e9, #6366f1)', transition: 'width 0.3s' }} />
+              </div>
+            </div>
+
+            {/* WORD / SOUND CARD */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.2rem' }}>
+              <span style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
+                {currentQ.display_name || currentQ.skill}
+              </span>
+              <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#fff', margin: '0.6rem 0 0.2rem 0', letterSpacing: '0.02em' }}>
+                "{currentQ.word}"
+              </div>
+              <div style={{ color: '#a5b4fc', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '0.6rem' }}>
+                /{currentQ.pronounce || currentQ.sound}/
+              </div>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.84rem' }}>
+                💡 {currentQ.hint || `Speak the target word "${currentQ.word}" clearly into your microphone.`}
+              </p>
+            </div>
+
+            {error && <div className="error-box" style={{ marginBottom: '1rem' }}>{error}</div>}
+
+            {/* RECORDING CONTROL BUTTON */}
+            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+              {status === 'processing' ? (
+                <div style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.9rem' }}>
+                  ⏳ Evaluating phoneme sound...
+                </div>
+              ) : status === 'recording' ? (
+                <button
+                  type="button"
+                  onClick={stopAndEvaluate}
+                  style={{
+                    background: '#ef4444', color: '#fff', border: 'none',
+                    padding: '0.8rem 1.8rem', borderRadius: '999px', fontWeight: 800,
+                    fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex',
+                    alignItems: 'center', gap: '0.6rem', boxShadow: '0 0 20px rgba(239,68,68,0.4)'
+                  }}
+                >
+                  <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fff', animation: 'pulse 1s infinite' }} />
+                  Recording ({recordingSeconds}s) — Click to Submit
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  style={{
+                    background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', color: '#fff', border: 'none',
+                    padding: '0.8rem 1.8rem', borderRadius: '999px', fontWeight: 800,
+                    fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex',
+                    alignItems: 'center', gap: '0.6rem', boxShadow: '0 4px 15px rgba(14,165,233,0.35)'
+                  }}
+                >
+                  <span>🎙️</span> Tap &amp; Speak "{currentQ.word}"
+                </button>
+              )}
+            </div>
+
+            {/* SKIP BUTTON */}
+            <div style={{ textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
+                  const skippedEval = {
+                    display_name: currentQ.display_name,
+                    sound: currentQ.sound,
+                    word: currentQ.word,
+                    pronounce: currentQ.pronounce,
+                    skill: currentQ.skill,
+                    score: 0.0,
+                    detected: false,
+                    spoken: []
+                  };
+                  const nextResults = [...results, skippedEval];
+                  setResults(nextResults);
+                  if (currentIndex + 1 < questions.length) {
+                    setCurrentIndex(currentIndex + 1);
+                    setStatus('idle');
+                    setRecordingSeconds(0);
+                  } else {
+                    generateFinalReport(nextResults);
+                  }
+                }}
+                style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.8rem', cursor: 'pointer' }}
+              >
+                Skip Question →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

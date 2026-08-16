@@ -1,0 +1,47 @@
+[
+  {"word":"think","skill":"th_sound"},
+  {"word":"three","skill":"th_sound"},
+  {"word":"this","skill":"th_sound"},
+
+  {"word":"very","skill":"vw_confusion"},
+  {"word":"west","skill":"vw_confusion"},
+  {"word":"wine","skill":"vw_confusion"},
+
+  {"word":"right","skill":"rl_confusion"},
+  {"word":"light","skill":"rl_confusion"},
+  {"word":"road","skill":"rl_confusion"},
+
+  {"word":"phone","skill":"ph_sound"},
+  {"word":"photo","skill":"ph_sound"},
+
+  {"word":"cat","skill":"k_sound"},
+  {"word":"kite","skill":"k_sound"},
+
+  {"word":"ship","skill":"sh_sound"},
+  {"word":"sheep","skill":"sh_sound"},
+
+  {"word":"chair","skill":"ch_sound"},
+  {"word":"cheap","skill":"ch_sound"},
+
+  {"word":"sit","skill":"short_vowel"},
+  {"word":"seat","skill":"long_vowel"},
+
+  {"word":"world","skill":"mixed"},
+
+  {"word":"full","skill":"short_vowel"},
+  {"word":"fool","skill":"long_vowel"},
+  {"word":"vegetable","skill":"silent_sound"},
+{"word":"comfortable","skill":"silent_sound"},
+{"word":"chocolate","skill":"silent_sound"},
+{"word":"receipt","skill":"silent_sound"},
+{"word":"debt","skill":"silent_sound"},
+{"word":"salmon","skill":"silent_sound"},
+{"word":"plumber","skill":"silent_sound"},
+{"word":"Wednesday","skill":"silent_sound"},
+{"word":"develop","skill":"stress"},
+{"word":"photograph","skill":"stress"},
+{"word":"photography","skill":"stress"},
+{"word":"opportunity","skill":"stress"},
+{"word":"entrepreneur","skill":"stress"},
+{"word":"career","skill":"stress"}
+]

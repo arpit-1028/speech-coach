@@ -1,0 +1,322 @@
+[
+  {
+    "sound": "th",
+    "word": "think",
+    "display_name": "TH Sound",
+    "pronounce": "th as in think",
+    "skill": "th_sound"
+  },
+  {
+    "sound": "dh",
+    "word": "this",
+    "display_name": "Soft TH Sound",
+    "pronounce": "th as in this",
+    "skill": "th_sound"
+  },
+  {
+    "sound": "th",
+    "word": "three",
+    "display_name": "TH Sound",
+    "pronounce": "th as in three",
+    "skill": "th_sound"
+  },
+
+  {
+    "sound": "v",
+    "word": "vine",
+    "display_name": "V Sound",
+    "pronounce": "v as in vine",
+    "skill": "vw_confusion"
+  },
+  {
+    "sound": "v",
+    "word": "very",
+    "display_name": "V Sound",
+    "pronounce": "v as in very",
+    "skill": "vw_confusion"
+  },
+  {
+    "sound": "w",
+    "word": "wine",
+    "display_name": "W Sound",
+    "pronounce": "w as in wine",
+    "skill": "vw_confusion"
+  },
+  {
+    "sound": "w",
+    "word": "west",
+    "display_name": "W Sound",
+    "pronounce": "w as in west",
+    "skill": "vw_confusion"
+  },
+
+  {
+    "sound": "r",
+    "word": "right",
+    "display_name": "R Sound",
+    "pronounce": "r as in right",
+    "skill": "rl_confusion"
+  },
+  {
+    "sound": "r",
+    "word": "road",
+    "display_name": "R Sound",
+    "pronounce": "r as in road",
+    "skill": "rl_confusion"
+  },
+  {
+    "sound": "l",
+    "word": "light",
+    "display_name": "L Sound",
+    "pronounce": "l as in light",
+    "skill": "rl_confusion"
+  },
+  {
+    "sound": "l",
+    "word": "love",
+    "display_name": "L Sound",
+    "pronounce": "l as in love",
+    "skill": "rl_confusion"
+  },
+
+  {
+    "sound": "s",
+    "word": "sip",
+    "display_name": "S Sound",
+    "pronounce": "s as in sip",
+    "skill": "sh_confusion"
+  },
+  {
+    "sound": "s",
+    "word": "see",
+    "display_name": "S Sound",
+    "pronounce": "s as in see",
+    "skill": "sh_confusion"
+  },
+  {
+    "sound": "sh",
+    "word": "ship",
+    "display_name": "SH Sound",
+    "pronounce": "sh as in ship",
+    "skill": "sh_confusion"
+  },
+  {
+    "sound": "sh",
+    "word": "shoe",
+    "display_name": "SH Sound",
+    "pronounce": "sh as in shoe",
+    "skill": "sh_confusion"
+  },
+
+  {
+    "sound": "z",
+    "word": "zip",
+    "display_name": "Z Sound",
+    "pronounce": "z as in zip",
+    "skill": "sz_confusion"
+  },
+  {
+    "sound": "z",
+    "word": "zoo",
+    "display_name": "Z Sound",
+    "pronounce": "z as in zoo",
+    "skill": "sz_confusion"
+  },
+
+  {
+    "sound": "ch",
+    "word": "chip",
+    "display_name": "CH Sound",
+    "pronounce": "ch as in chip",
+    "skill": "chj_confusion"
+  },
+  {
+    "sound": "ch",
+    "word": "chair",
+    "display_name": "CH Sound",
+    "pronounce": "ch as in chair",
+    "skill": "chj_confusion"
+  },
+  {
+    "sound": "j",
+    "word": "jump",
+    "display_name": "J Sound",
+    "pronounce": "j as in jump",
+    "skill": "chj_confusion"
+  },
+  {
+    "sound": "j",
+    "word": "job",
+    "display_name": "J Sound",
+    "pronounce": "j as in job",
+    "skill": "chj_confusion"
+  },
+
+  {
+    "sound": "f",
+    "word": "fan",
+    "display_name": "F Sound",
+    "pronounce": "f as in fan",
+    "skill": "fp_confusion"
+  },
+  {
+    "sound": "f",
+    "word": "phone",
+    "display_name": "F Sound",
+    "pronounce": "f as in phone",
+    "skill": "fp_confusion"
+  },
+  {
+    "sound": "p",
+    "word": "pen",
+    "display_name": "P Sound",
+    "pronounce": "p as in pen",
+    "skill": "fp_confusion"
+  },
+  {
+    "sound": "p",
+    "word": "paper",
+    "display_name": "P Sound",
+    "pronounce": "p as in paper",
+    "skill": "fp_confusion"
+  },
+
+  {
+    "sound": "b",
+    "word": "ball",
+    "display_name": "B Sound",
+    "pronounce": "b as in ball",
+    "skill": "bd_confusion"
+  },
+  {
+    "sound": "b",
+    "word": "baby",
+    "display_name": "B Sound",
+    "pronounce": "b as in baby",
+    "skill": "bd_confusion"
+  },
+  {
+    "sound": "d",
+    "word": "dog",
+    "display_name": "D Sound",
+    "pronounce": "d as in dog",
+    "skill": "bd_confusion"
+  },
+  {
+    "sound": "d",
+    "word": "door",
+    "display_name": "D Sound",
+    "pronounce": "d as in door",
+    "skill": "bd_confusion"
+  },
+
+  {
+    "sound": "k",
+    "word": "kite",
+    "display_name": "K Sound",
+    "pronounce": "k as in kite",
+    "skill": "kg_confusion"
+  },
+  {
+    "sound": "k",
+    "word": "cat",
+    "display_name": "K Sound",
+    "pronounce": "k as in cat",
+    "skill": "kg_confusion"
+  },
+  {
+    "sound": "g",
+    "word": "go",
+    "display_name": "G Sound",
+    "pronounce": "g as in go",
+    "skill": "kg_confusion"
+  },
+  {
+    "sound": "g",
+    "word": "game",
+    "display_name": "G Sound",
+    "pronounce": "g as in game",
+    "skill": "kg_confusion"
+  },
+
+  {
+    "sound": "m",
+    "word": "man",
+    "display_name": "M Sound",
+    "pronounce": "m as in man",
+    "skill": "mn_confusion"
+  },
+  {
+    "sound": "n",
+    "word": "nap",
+    "display_name": "N Sound",
+    "pronounce": "n as in nap",
+    "skill": "mn_confusion"
+  },
+  {
+    "sound": "ng",
+    "word": "sing",
+    "display_name": "NG Sound",
+    "pronounce": "ng as in sing",
+    "skill": "ng_sound"
+  },
+
+  {
+    "sound": "i",
+    "word": "sheep",
+    "display_name": "Long E",
+    "pronounce": "ee as in sheep",
+    "skill": "long_vowel"
+  },
+  {
+    "sound": "ɪ",
+    "word": "ship",
+    "display_name": "Short I",
+    "pronounce": "i as in ship",
+    "skill": "short_vowel"
+  },
+
+  {
+    "sound": "u",
+    "word": "fool",
+    "display_name": "Long U",
+    "pronounce": "oo as in fool",
+    "skill": "long_vowel"
+  },
+  {
+    "sound": "ʊ",
+    "word": "full",
+    "display_name": "Short U",
+    "pronounce": "u as in full",
+    "skill": "short_vowel"
+  },
+
+  {
+    "sound": "æ",
+    "word": "cat",
+    "display_name": "Short A",
+    "pronounce": "a as in cat",
+    "skill": "vowel_accuracy"
+  },
+  {
+    "sound": "ʌ",
+    "word": "cut",
+    "display_name": "Short U",
+    "pronounce": "u as in cut",
+    "skill": "vowel_accuracy"
+  },
+  {
+    "sound": "ɑ",
+    "word": "father",
+    "display_name": "AH Sound",
+    "pronounce": "a as in father",
+    "skill": "vowel_accuracy"
+  },
+  {
+    "sound": "ɔ",
+    "word": "caught",
+    "display_name": "AW Sound",
+    "pronounce": "aw as in caught",
+    "skill": "vowel_accuracy"
+  }
+]
