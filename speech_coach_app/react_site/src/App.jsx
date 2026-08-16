@@ -1390,15 +1390,16 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       try {
         evalData = await evaluateDiagnosticSound(audioBlob, currentIndex);
       } catch (err) {
+        // Backend unreachable — don't give free marks, mark as unevaluated
         evalData = {
           display_name: currentQ.display_name,
           sound: currentQ.sound,
           word: currentQ.word,
           pronounce: currentQ.pronounce,
           skill: currentQ.skill,
-          score: 1.0,
-          detected: true,
-          spoken: [currentQ.sound]
+          score: 0.0,
+          detected: false,
+          spoken: []
         };
       }
 
