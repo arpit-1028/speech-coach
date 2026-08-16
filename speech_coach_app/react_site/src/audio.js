@@ -20,6 +20,7 @@ export class AudioRecorder {
       if (event.data.size > 0) this.chunks.push(event.data);
     };
     this.mediaRecorder.start();
+    return this.stream; // return stream so caller can attach analyser
   }
 
   stop() {

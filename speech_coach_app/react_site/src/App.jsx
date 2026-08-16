@@ -1336,20 +1336,25 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
   const recorderRef = useRef(null);
   const timerRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+  const analyserRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const silenceDetectRef = useRef(null);
 
   const DEFAULT_DIAGNOSTIC = [
-    { sound: 'iː', display_name: 'Long EE Sound', word: 'sheep', pronounce: 'ʃiːp', skill: 'vowels', hint: 'Say "sheep" clearly' },
-    { sound: 'æ', display_name: 'Short A Sound', word: 'cat', pronounce: 'kæt', skill: 'vowels', hint: 'Say "cat" with open jaw' },
-    { sound: 'θ', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" with tongue tip between teeth' },
-    { sound: 'v', display_name: 'V vs W Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'v_w_sounds', hint: 'Say "very" (upper teeth on lower lip)' },
-    { sound: 'r', display_name: 'R Liquid Sound', word: 'red', pronounce: 'rɛd', skill: 'r_l_sounds', hint: 'Say "red" with tongue curled back' }
+    { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', hint: 'Say "map" — press lips together for M', difficulty: 'easy' },
+    { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', hint: 'Say "ball" — pop lips apart for B', difficulty: 'easy' },
+    { sound: 'th', display_name: 'TH Sound', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" — tongue between teeth for TH', difficulty: 'medium' },
+    { sound: 'v', display_name: 'V vs W', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', hint: 'Say "very" — upper teeth on lower lip', difficulty: 'medium' },
+    { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', hint: 'Say "red" — curl tongue back for R', difficulty: 'easy' }
   ];
 
+  // ── Load questions (all 15 from backend) ──────────────────────────────────
   useEffect(() => {
     fetchDiagnosticQuestions()
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
-          setQuestions(data.slice(0, 5));
+          setQuestions(data); // use ALL questions from backend (15)
         } else {
           setQuestions(DEFAULT_DIAGNOSTIC);
         }
@@ -1359,27 +1364,96 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
+      if (audioCtxRef.current) audioCtxRef.current.close();
     };
   }, []);
 
+  // ── Auto-stop: silence detection via Web Audio API ─────────────────────────
+  function startSilenceDetection(stream) {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.fftSize);
+      let speechDetected = false;
+      let silenceStart = null;
+      const SPEECH_THRESHOLD = 15;    // RMS level to count as speech
+      const SILENCE_AFTER_MS = 1800;  // auto-stop after 1.8s of silence post-speech
+
+      function tick() {
+        analyser.getByteTimeDomainData(dataArray);
+        // Compute RMS
+        let sumSq = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / dataArray.length) * 100;
+
+        if (rms > SPEECH_THRESHOLD) {
+          speechDetected = true;
+          silenceStart = null; // reset silence timer on each speech frame
+        } else if (speechDetected) {
+          // User was speaking, now silence detected
+          if (!silenceStart) silenceStart = Date.now();
+          else if (Date.now() - silenceStart > SILENCE_AFTER_MS) {
+            // Auto-stop after sustained silence
+            silenceDetectRef.current = null;
+            stopAndEvaluate();
+            return;
+          }
+        }
+        silenceDetectRef.current = requestAnimationFrame(tick);
+      }
+      silenceDetectRef.current = requestAnimationFrame(tick);
+    } catch (e) {
+      console.warn('Silence detection unavailable:', e);
+    }
+  }
+
+  function stopSilenceDetection() {
+    if (silenceDetectRef.current) {
+      cancelAnimationFrame(silenceDetectRef.current);
+      silenceDetectRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close();
+      audioCtxRef.current = null;
+    }
+  }
+
+  // ── Recording start ────────────────────────────────────────────────────────
   async function startRecording() {
     setError('');
     try {
       recorderRef.current = new AudioRecorder();
-      await recorderRef.current.start();
+      const stream = await recorderRef.current.start();
       setStatus('recording');
       setRecordingSeconds(0);
       timerRef.current = setInterval(() => {
         setRecordingSeconds((s) => s + 1);
       }, 1000);
+      // Start silence detection on the same mic stream
+      if (stream) startSilenceDetection(stream);
     } catch (e) {
-      setError(e.message || 'Microphone access failed.');
+      setError(e.message || 'Microphone access failed. Please allow microphone permission.');
     }
   }
 
+  // ── Recording stop + evaluate ──────────────────────────────────────────────
   async function stopAndEvaluate() {
-    if (!recorderRef.current) return;
+    if (!recorderRef.current || status === 'processing') return;
     if (timerRef.current) clearInterval(timerRef.current);
+    stopSilenceDetection();
     setStatus('processing');
 
     try {
@@ -1390,7 +1464,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       try {
         evalData = await evaluateDiagnosticSound(audioBlob, currentIndex);
       } catch (err) {
-        // Backend unreachable — don't give free marks, mark as unevaluated
+        // Backend unreachable — mark as unevaluated (no free marks)
         evalData = {
           display_name: currentQ.display_name,
           sound: currentQ.sound,
@@ -1419,35 +1493,24 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     }
   }
 
+  // ── Report generation — computed from ACTUAL per-question scores ───────────
+  // FIX: We compute the report locally from the real evalData scores.
+  // This means 0% only if the user truly scored 0 on every question.
+  // We still try the backend report endpoint but ALWAYS fall back to local computation.
   async function generateFinalReport(allResults) {
     setStatus('processing');
     try {
       let rep;
       try {
         rep = await fetchDiagnosticReport(allResults);
+        // Sanity check: if backend gives 0% but we have scores > 0, use local
+        const localOverall = computeLocalOverall(allResults);
+        if ((rep.overall_score === 0 || rep.overall_score == null) && localOverall > 0) {
+          rep = buildLocalReport(allResults);
+        }
       } catch {
-        const total = allResults.length;
-        const correct = allResults.filter((r) => r.detected || r.score > 0).length;
-        const pct = Math.round((correct / (total || 1)) * 100);
-        rep = {
-          overall_score: pct,
-          pronunciation_scores: {
-            vowels: pct >= 80 ? 90 : 70,
-            consonants: pct >= 70 ? 85 : 65,
-            th_sounds: pct >= 60 ? 80 : 50,
-            v_w_sounds: 80,
-            r_l_sounds: 85
-          },
-          strengths: pct >= 70 ? ['Vowel Clarity', 'R/L Liquid Articulation'] : ['Vowel Foundation'],
-          weaknesses: pct < 70 ? ['TH Sound Precision', 'Consonant Clarity'] : ['Minor TH Accent Neutralization'],
-          recommended_learning_path: [
-            'Practice TH sound placement (tongue tip lightly touching upper teeth)',
-            'Refine V vs W lip articulation in Stage 2 & 3',
-            'Progress through gamified Stage 2 challenges'
-          ],
-          best_skill: 'vowels',
-          weakest_skill: 'th_sounds'
-        };
+        // Backend unavailable — build accurate report from local per-question scores
+        rep = buildLocalReport(allResults);
       }
       setReport(rep);
       setStatus('report');
@@ -1457,9 +1520,93 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     }
   }
 
+  // Compute overall % from actual per-question score values
+  function computeLocalOverall(allResults) {
+    if (!allResults.length) return 0;
+    const total = allResults.reduce((sum, r) => sum + (r.score || 0), 0);
+    return Math.round((total / allResults.length) * 100);
+  }
+
+  // Build a full report object from actual per-question evalData
+  function buildLocalReport(allResults) {
+    // Group scores by skill
+    const skillGroups = {};
+    allResults.forEach(r => {
+      const skill = r.skill || 'consonants';
+      if (!skillGroups[skill]) skillGroups[skill] = [];
+      skillGroups[skill].push(r.score || 0);
+    });
+
+    const pronunciation_scores = {};
+    Object.entries(skillGroups).forEach(([skill, scores]) => {
+      pronunciation_scores[skill] = Math.round(
+        (scores.reduce((a, b) => a + b, 0) / scores.length) * 100
+      );
+    });
+
+    const scoreValues = Object.values(pronunciation_scores);
+    const overall_score = scoreValues.length
+      ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length)
+      : 0;
+
+    const SKILL_LABELS = {
+      consonants: 'Consonant Clarity',
+      th_sounds: 'TH Sound Precision',
+      vw_confusion: 'V vs W Distinction',
+      rl_confusion: 'R vs L Distinction',
+      sh_confusion: 'SH Sound',
+      vowels: 'Vowel Accuracy',
+      long_vowel: 'Long Vowels',
+      short_vowel: 'Short Vowels',
+      vowel_accuracy: 'Vowel Precision'
+    };
+
+    const strengths = Object.entries(pronunciation_scores)
+      .filter(([, v]) => v >= 70)
+      .map(([k]) => SKILL_LABELS[k] || k.replace('_', ' '));
+
+    const weaknesses = Object.entries(pronunciation_scores)
+      .filter(([, v]) => v < 70)
+      .map(([k]) => SKILL_LABELS[k] || k.replace('_', ' '));
+
+    // Build recommended path from weaknesses
+    const recommended_learning_path = [];
+    if (pronunciation_scores.th_sounds != null && pronunciation_scores.th_sounds < 70) {
+      recommended_learning_path.push('Practice TH sounds — tongue tip lightly between teeth');
+    }
+    if (pronunciation_scores.vw_confusion != null && pronunciation_scores.vw_confusion < 70) {
+      recommended_learning_path.push('Distinguish V from W — teeth on lip vs rounded lips');
+    }
+    if (pronunciation_scores.rl_confusion != null && pronunciation_scores.rl_confusion < 70) {
+      recommended_learning_path.push('Practice R and L — tongue curl vs tongue tip touch');
+    }
+    if (recommended_learning_path.length === 0) {
+      recommended_learning_path.push('Keep practising through gamified Stage 2 challenges');
+      recommended_learning_path.push('Focus on long words and multi-syllable pronunciation');
+    }
+
+    const best_skill = scoreValues.length
+      ? Object.entries(pronunciation_scores).sort(([,a],[,b]) => b-a)[0]?.[0]
+      : null;
+    const weakest_skill = scoreValues.length
+      ? Object.entries(pronunciation_scores).sort(([,a],[,b]) => a-b)[0]?.[0]
+      : null;
+
+    return {
+      overall_score,
+      pronunciation_scores,
+      strengths: strengths.length ? strengths : ['Good effort — keep practising!'],
+      weaknesses: weaknesses.length ? weaknesses : [],
+      recommended_learning_path,
+      best_skill,
+      weakest_skill
+    };
+  }
+
+  // ── Apply placement ────────────────────────────────────────────────────────
   function applyPlacement() {
     if (!report) return;
-    const scoreVal = report.overall_score || 70;
+    const scoreVal = report.overall_score || 0;
 
     let unlockUntilLevel = 2;
     if (scoreVal >= 85) unlockUntilLevel = 40;
@@ -1484,7 +1631,9 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
   }
 
   const currentQ = questions[currentIndex] || DEFAULT_DIAGNOSTIC[0];
-  const progressPct = questions.length > 0 ? Math.round(((currentIndex) / questions.length) * 100) : 0;
+  const progressPct = questions.length > 0 ? Math.round((currentIndex / questions.length) * 100) : 0;
+  const difficultyColor = { easy: '#10b981', medium: '#f59e0b', hard: '#ef4444' };
+  const diffColor = difficultyColor[currentQ.difficulty] || '#94a3b8';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
