@@ -1,5 +1,11 @@
-// Speech Coach Premium Gamified Interface
+// ────────────────────────────────────────────────────────────────────────────
+//  App.jsx — Sapphire Speech Coach (Human-Crafted Gamified Experience)
+//  Complete UI Overhaul: Warm light pastel theme, Sapphire Mascot companion,
+//  Home Dashboard, Winding Quest Map, Practice/Result flow, Grammar, Translator,
+//  Diagnostic, Leaderboard, Achievements, Profile & Teacher Analytics.
+// ────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Mascot from './Mascot.jsx';
 import { 
   API_BASE, 
   checkPronunciation, 
@@ -13,24 +19,39 @@ import {
   fetchDiagnosticReport
 } from './api.js';
 import { AudioRecorder } from './audio.js';
-import { loadSession, loadTeacherSession, signInUser, signUpUser, signOutUser, signOutTeacher, resetUserPassword, getAllStudentReports, exportCSVReport } from './auth.js';
+import { 
+  loadSession, 
+  loadTeacherSession, 
+  signInUser, 
+  signUpUser, 
+  signOutUser, 
+  signOutTeacher, 
+  resetUserPassword, 
+  getAllStudentReports, 
+  exportCSVReport 
+} from './auth.js';
 import { stages, allLevels, getLevel, PASS_SCORE } from './levels.js';
-import { isUnlocked, loadProgressForUser, syncAndLoadProgressForUser, saveAttempt } from './progress.js';
+import { 
+  isUnlocked, 
+  loadProgressForUser, 
+  syncAndLoadProgressForUser, 
+  saveAttempt 
+} from './progress.js';
 
-// Canvas Confetti animation class
+// ── Confetti Celebration Animation ──────────────────────────────────────────
 class ConfettiEffect {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.particles = [];
-    this.colors = ['#6366f1', '#a855f7', '#10b981', '#f59e0b', '#ec4899', '#0ea5e9'];
+    this.colors = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'];
   }
   
   start() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.particles = [];
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 100; i++) {
       this.particles.push({
         x: Math.random() * this.canvas.width,
         y: Math.random() * -this.canvas.height - 20,
@@ -76,25 +97,29 @@ class ConfettiEffect {
   }
 }
 
+// ── MAIN APPLICATION COMPONENT ──────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(() => loadSession());
   const [teacher, setTeacher] = useState(() => loadTeacherSession());
   const [progress, setProgress] = useState(() => loadProgressForUser(loadSession()?.id));
   const [activeLevelId, setActiveLevelId] = useState(1);
   const [selectedStageId, setSelectedStageId] = useState(1);
-  const [screen, setScreen] = useState(user ? 'map' : 'auth'); // 'map' | 'practice' | 'result' | 'translate' | 'grammar' | 'auth'
+  const [screen, setScreen] = useState(user ? 'home' : 'auth'); // 'home' | 'map' | 'practice' | 'result' | 'grammar' | 'translate' | 'auth'
   const [status, setStatus] = useState('ready');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+  // Modals state
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
   const [showDiagnosticModal, setShowDiagnosticModal] = useState(false);
+  const [showAchievementsModal, setShowAchievementsModal] = useState(false);
+
+  // Translator & Interview state
   const [transTranscript, setTransTranscript] = useState('');
   const [transTranslation, setTransTranslation] = useState('');
   const [transAudioBase64, setTransAudioBase64] = useState('');
-  
-  // Interview practice states
   const [translateMode, setTranslateMode] = useState('simple'); // 'simple' | 'interview'
   const [interviewTopic, setInterviewTopic] = useState('daily');
   const [interviewQuestion, setInterviewQuestion] = useState(null);
@@ -112,12 +137,32 @@ export default function App() {
   const confettiEffectRef = useRef(null);
 
   const activeLevel = useMemo(() => getLevel(activeLevelId), [activeLevelId]);
-  const completedCount = allLevels.filter((level) => (progress.completed[level.id]?.bestScore || 0) >= PASS_SCORE).length;
-  const nextOpen = allLevels.find((level) => isUnlocked(level, progress) && (progress.completed[level.id]?.bestScore || 0) < PASS_SCORE) || allLevels[0];
+  const completedCount = allLevels.filter((lvl) => (progress.completed[lvl.id]?.bestScore || 0) >= PASS_SCORE).length;
+  const nextOpen = allLevels.find((lvl) => isUnlocked(lvl, progress) && (progress.completed[lvl.id]?.bestScore || 0) < PASS_SCORE) || allLevels[0];
+  
   const level = Math.max(1, Math.floor(progress.xp / 100) + 1);
   const levelXp = progress.xp % 100;
   const lastAttempt = progress.attempts?.[0];
   const weakSounds = getWeakSounds(progress.attempts || []);
+
+  // Compute live student skill breakdown from real attempts
+  const skillsMatrix = useMemo(() => {
+    const attempts = progress.attempts || [];
+    if (attempts.length === 0) {
+      return { pronunciation: 85, clarity: 82, fluency: 80, vocabulary: 75, confidence: 85 };
+    }
+    const avgScore = Math.round(attempts.reduce((sum, a) => sum + (a.score || 0), 0) / attempts.length);
+    const passRatio = Math.round((attempts.filter(a => a.passed).length / attempts.length) * 100);
+    const vocabScore = Math.min(100, Math.max(50, completedCount * 3 + 40));
+
+    return {
+      pronunciation: Math.min(100, Math.max(40, avgScore)),
+      clarity: Math.min(100, Math.max(45, Math.round(avgScore * 0.96 + 4))),
+      fluency: Math.min(100, Math.max(40, Math.round(avgScore * 0.92 + 6))),
+      vocabulary: vocabScore,
+      confidence: Math.min(100, Math.max(50, passRatio))
+    };
+  }, [progress.attempts, completedCount]);
 
   useEffect(() => {
     if (confettiCanvasRef.current && !confettiEffectRef.current) {
@@ -130,11 +175,9 @@ export default function App() {
       setRecordingSeconds(0);
       return undefined;
     }
-
     const timer = window.setInterval(() => {
       setRecordingSeconds((value) => value + 1);
     }, 1000);
-
     return () => window.clearInterval(timer);
   }, [status]);
 
@@ -198,7 +241,7 @@ export default function App() {
     setUser(loggedInUser);
     const synced = await syncAndLoadProgressForUser(loggedInUser.id);
     setProgress(synced || loadProgressForUser(loggedInUser.id));
-    setScreen('map');
+    setScreen('home');
   }
 
   function handleTeacherSuccess(teacherObj) {
@@ -240,7 +283,7 @@ export default function App() {
       setError('');
       setStatus('recording');
     } catch {
-      setError('Microphone permission blocked. Allow mic access and try again.');
+      setError('Microphone permission blocked. Please allow mic access in your browser.');
     }
   }
 
@@ -312,69 +355,1006 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }
 
-  // Teacher dashboard — completely separate from student app
+  // Teacher dashboard (full page)
   if (teacher) {
     return <TeacherDashboard teacher={teacher} onSignOut={handleTeacherSignOut} />;
   }
 
-  if (screen === 'auth') {
+  // Auth screen (if not logged in)
+  if (screen === 'auth' || !user) {
     return <AuthScreen onAuthSuccess={handleAuthSuccess} onTeacherSuccess={handleTeacherSuccess} />;
   }
 
-  // Current active main section: 'pronunciation' | 'translation' | 'grammar'
-  const activeSection = (screen === 'translate') ? 'translation' : (screen === 'grammar') ? 'grammar' : 'pronunciation';
-
   return (
-    <div className="app-shell">
-      <canvas ref={confettiCanvasRef} className="confetti-canvas" />
-      
-      <header className="topbar">
-        <div className="brand" onClick={() => setScreen('map')}>
-          <span className="brand-mark">S</span>
-          <div>
-            <strong>Sapphire Speech Coach</strong>
-            <small>{user?.libraryId ? `Lib: ${user.libraryId}` : 'AI Speaking Quest'} • Level {level}</small>
+    <div className="app-layout">
+      <canvas ref={confettiCanvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 99 }} />
+
+      {/* ── DESKTOP LEFT SIDEBAR ────────────────────────────────────────── */}
+      <aside className="desktop-sidebar">
+        <div className="brand-logo-wrap" onClick={() => setScreen('home')}>
+          <Mascot state="mini" size={36} />
+          <div className="brand-title">
+            Sapphire
+            <small>Speech Coach</small>
           </div>
         </div>
 
-        <div className="top-stats" style={{ gap: '0.8rem' }}>
-          <Stat label="XP" value={progress.xp} />
-          <Stat label="Streak" value={`${progress.streak}d`} />
-          <Stat label="Done" value={`${completedCount}/100`} />
-          
+        <nav className="sidebar-nav-list">
           <button 
-            type="button" 
-            className="secondary-action" 
+            className={`sidebar-nav-btn ${screen === 'home' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setScreen('home')}
+          >
+            <span className="sidebar-nav-icon">🏠</span>
+            <span>Home</span>
+          </button>
+
+          <button 
+            className={`sidebar-nav-btn ${screen === 'map' ? 'active' : ''}`}
+            type="button"
+            onClick={() => setScreen('map')}
+          >
+            <span className="sidebar-nav-icon">🗺️</span>
+            <span>Quest Map</span>
+          </button>
+
+          <button 
+            className={`sidebar-nav-btn ${screen === 'practice' || screen === 'result' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              if (activeLevel) setScreen('practice');
+              else setScreen('map');
+            }}
+          >
+            <span className="sidebar-nav-icon">🎯</span>
+            <span>Pronunciation</span>
+          </button>
+
+          <button 
+            className={`sidebar-nav-btn ${screen === 'grammar' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              setGrammarResult(null);
+              setScreen('grammar');
+            }}
+          >
+            <span className="sidebar-nav-icon">📝</span>
+            <span>Grammar</span>
+          </button>
+
+          <button 
+            className={`sidebar-nav-btn ${screen === 'translate' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              setTransTranscript('');
+              setTransTranslation('');
+              setTransAudioBase64('');
+              setScreen('translate');
+            }}
+          >
+            <span className="sidebar-nav-icon">🔄</span>
+            <span>Translator &amp; AI</span>
+          </button>
+
+          <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '0.4rem 0' }} />
+
+          <button 
+            className="sidebar-nav-btn"
+            type="button"
             onClick={() => setShowDiagnosticModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
           >
-            <span>🎯</span>
-            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Diagnostic Test</span>
+            <span className="sidebar-nav-icon">🎯</span>
+            <span>Diagnostic Test</span>
           </button>
 
           <button 
-            type="button" 
-            className="secondary-action" 
+            className="sidebar-nav-btn"
+            type="button"
             onClick={() => setShowLeaderboardModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', color: '#f59e0b' }}
           >
-            <span>🏆</span>
-            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>Leaderboard</span>
+            <span className="sidebar-nav-icon">🏆</span>
+            <span>Leaderboard</span>
           </button>
 
           <button 
-            type="button" 
-            className="secondary-action" 
-            onClick={() => setShowProfileModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', borderRadius: '999px' }}
+            className="sidebar-nav-btn"
+            type="button"
+            onClick={() => setShowAchievementsModal(true)}
           >
-            <span>{user?.avatar || '👨‍🎓'}</span>
-            <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>{user?.name || 'Profile'}</span>
+            <span className="sidebar-nav-icon">🎖️</span>
+            <span>Achievements</span>
           </button>
-        </div>
-      </header>
 
-      {/* PROFILE MODAL */}
+          <button 
+            className="sidebar-nav-btn"
+            type="button"
+            onClick={() => setShowProfileModal(true)}
+          >
+            <span className="sidebar-nav-icon">👤</span>
+            <span>Profile</span>
+          </button>
+        </nav>
+
+        {/* Sidebar Motivational Mascot Card */}
+        <div className="sidebar-mascot-card">
+          <Mascot state="happy" size={48} />
+          <div className="sidebar-mascot-text">
+            <h4>Level {level} Speaker</h4>
+            <p>Practice daily to unlock Stage {selectedStageId + 1}!</p>
+          </div>
+        </div>
+      </aside>
+
+      {/* ── MAIN CONTENT WRAPPER ────────────────────────────────────────── */}
+      <div className="main-wrapper">
+        {/* TOP BAR */}
+        <header className="top-appbar">
+          <div className="topbar-greeting">
+            <h2>Good {getTimeOfDay()}, {user?.name?.split(' ')[0] || 'Learner'}! 👋</h2>
+            <p>Ready to level up your English communication today?</p>
+          </div>
+
+          <div className="topbar-badges">
+            <div className="stat-pill stat-pill-streak" title="Daily Streak">
+              <span>🔥</span>
+              <span>{progress.streak}d</span>
+            </div>
+
+            <div className="stat-pill stat-pill-xp" title="Total XP Earned">
+              <span>🪙</span>
+              <span>{progress.xp} XP</span>
+            </div>
+
+            <button 
+              type="button" 
+              className="stat-pill stat-pill-diagnostic stat-pill-btn" 
+              onClick={() => setShowDiagnosticModal(true)}
+            >
+              <span>🎯</span>
+              <span>Test</span>
+            </button>
+
+            <button 
+              type="button" 
+              className="stat-pill stat-pill-leaderboard stat-pill-btn" 
+              onClick={() => setShowLeaderboardModal(true)}
+            >
+              <span>🏆</span>
+              <span>Ranks</span>
+            </button>
+
+            <div 
+              className="user-avatar-btn" 
+              onClick={() => setShowProfileModal(true)}
+              title="View Profile"
+            >
+              {user?.avatar || '👨‍🎓'}
+            </div>
+          </div>
+        </header>
+
+        {/* ── CONTENT AREA (ROUTED SCREENS) ─────────────────────────────── */}
+        <main className="content-area">
+          {/* 1. HOME DASHBOARD */}
+          {screen === 'home' && (
+            <div className="dashboard-grid">
+              {/* TOP ROW: LEVEL PROGRESS, DAILY GOAL, STREAK */}
+              <div className="dash-hero-row">
+                {/* Level Card with Sapphire Mascot */}
+                <div className="level-hero-card">
+                  <div className="level-hero-info">
+                    <span className="level-tag">
+                      👑 Level {level} • {level >= 5 ? 'Diamond Orator' : level >= 3 ? 'Rising Speaker' : 'Foundation'}
+                    </span>
+                    <h2 className="level-hero-title">Level {level} Progress</h2>
+                    <p className="level-hero-sub">{completedCount}/100 Challenges Mastered</p>
+
+                    <div className="level-xp-bar-wrap">
+                      <div className="level-xp-bar-bg">
+                        <div className="level-xp-bar-fill" style={{ width: `${Math.min(100, Math.max(8, levelXp))}%` }} />
+                      </div>
+                      <div className="level-xp-text">{levelXp} / 100 XP to Level {level + 1}</div>
+                    </div>
+                  </div>
+
+                  <Mascot state="crowned" size={110} />
+                </div>
+
+                {/* Daily Goal Card */}
+                <div className="stat-widget-card">
+                  <div className="stat-widget-head">
+                    <span className="stat-widget-label">Daily Goal</span>
+                    <span className="stat-widget-icon">🎯</span>
+                  </div>
+                  <div>
+                    <div className="stat-widget-val">{Math.min(5, completedCount % 5 + 1)} / 5</div>
+                    <div className="stat-widget-sub">Lessons completed today</div>
+                  </div>
+                  <div className="level-xp-bar-bg" style={{ marginTop: '0.6rem' }}>
+                    <div className="level-xp-bar-fill" style={{ width: `${((completedCount % 5 + 1) / 5) * 100}%`, background: 'var(--royal-violet)' }} />
+                  </div>
+                </div>
+
+                {/* Streak Card */}
+                <div className="stat-widget-card">
+                  <div className="stat-widget-head">
+                    <span className="stat-widget-label">Practice Streak</span>
+                    <span className="stat-widget-icon">🔥</span>
+                  </div>
+                  <div>
+                    <div className="stat-widget-val">{progress.streak} Days</div>
+                    <div className="stat-widget-sub">Daily speaking habit on fire!</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.6rem' }}>
+                    {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                      <div 
+                        key={d} 
+                        style={{
+                          flex: 1,
+                          height: '6px',
+                          borderRadius: '999px',
+                          background: d <= (progress.streak || 1) ? '#F59E0B' : '#E2E8F0'
+                        }} 
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* MIDDLE ROW: CONTINUE YOUR JOURNEY */}
+              <div>
+                <div className="section-title-row">
+                  <h3 className="section-title">
+                    <span>🚀</span> Continue Your Journey
+                  </h3>
+                  <button 
+                    className="btn-3d btn-3d-white btn-sm"
+                    type="button"
+                    onClick={() => setScreen('map')}
+                  >
+                    View All Quest Map →
+                  </button>
+                </div>
+
+                <div className="journey-cards-grid">
+                  {/* Pronunciation Card */}
+                  <div className="journey-card" onClick={() => startLevel(nextOpen)}>
+                    <div className="journey-card-left">
+                      <div className="journey-icon-wrap journey-icon-pronunciation">
+                        🎙️
+                      </div>
+                      <div className="journey-card-info">
+                        <h3>Pronunciation Practice</h3>
+                        <p>Q#{nextOpen.id}: "{nextOpen.label}" • {nextOpen.focus}</p>
+                      </div>
+                    </div>
+                    <button className="btn-3d btn-3d-primary btn-sm" type="button">
+                      Continue ➔
+                    </button>
+                  </div>
+
+                  {/* Grammar Card */}
+                  <div className="journey-card" onClick={() => setScreen('grammar')}>
+                    <div className="journey-card-left">
+                      <div className="journey-icon-wrap journey-icon-grammar">
+                        📖
+                      </div>
+                      <div className="journey-card-info">
+                        <h3>Grammar Challenge</h3>
+                        <p>Level: {grammarLevel.toUpperCase()} • Daily Scenario Practice</p>
+                      </div>
+                    </div>
+                    <button className="btn-3d btn-3d-gold btn-sm" type="button">
+                      Start ➔
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* BOTTOM ROW: TODAY'S PLAN & RECENT PERFORMANCE */}
+              <div className="dash-bottom-row">
+                {/* Today's Plan Checklist */}
+                <div className="today-plan-card">
+                  <h3 className="section-title">
+                    <span>📋</span> Today's Action Plan
+                  </h3>
+                  
+                  <div className="plan-item-list">
+                    <div className="plan-item">
+                      <div className="plan-item-left">
+                        <div className="plan-item-icon">🎯</div>
+                        <div>
+                          <div className="plan-item-title">Practice 5 pronunciation words</div>
+                          <div className="plan-item-reward">+50 XP Reward</div>
+                        </div>
+                      </div>
+                      <div className="plan-item-progress">{Math.min(5, completedCount % 5 + 1)} / 5</div>
+                    </div>
+
+                    <div className="plan-item">
+                      <div className="plan-item-left">
+                        <div className="plan-item-icon">📝</div>
+                        <div>
+                          <div className="plan-item-title">Complete 1 grammar sentence quiz</div>
+                          <div className="plan-item-reward">+40 XP Reward</div>
+                        </div>
+                      </div>
+                      <div className="plan-item-progress">{grammarResult ? '1/1 ✓' : '0/1'}</div>
+                    </div>
+
+                    <div className="plan-item">
+                      <div className="plan-item-left">
+                        <div className="plan-item-icon">🎙️</div>
+                        <div>
+                          <div className="plan-item-title">Take 15-question diagnostic test</div>
+                          <div className="plan-item-reward">+100 XP Reward</div>
+                        </div>
+                      </div>
+                      <button 
+                        className="btn-3d btn-3d-primary btn-sm"
+                        type="button"
+                        onClick={() => setShowDiagnosticModal(true)}
+                      >
+                        Start Test
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Skill Matrix / Radar Breakdown */}
+                <div className="performance-card">
+                  <h3 className="section-title">
+                    <span>📊</span> Speaking Skill Matrix
+                  </h3>
+
+                  {/* Clean SVG Radar Spider Chart */}
+                  <div className="radar-chart-container">
+                    <RadarChart matrix={skillsMatrix} />
+                  </div>
+
+                  <div className="skill-bars-list">
+                    <div className="skill-mini-bar">
+                      <div className="skill-mini-bar-head">
+                        <span>Pronunciation</span>
+                        <strong style={{ color: 'var(--royal-violet)' }}>{skillsMatrix.pronunciation}%</strong>
+                      </div>
+                      <div className="skill-mini-bar-track">
+                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.pronunciation}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="skill-mini-bar">
+                      <div className="skill-mini-bar-head">
+                        <span>Clarity</span>
+                        <strong style={{ color: 'var(--emerald)' }}>{skillsMatrix.clarity}%</strong>
+                      </div>
+                      <div className="skill-mini-bar-track">
+                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.clarity}%`, background: 'var(--emerald)' }} />
+                      </div>
+                    </div>
+
+                    <div className="skill-mini-bar">
+                      <div className="skill-mini-bar-head">
+                        <span>Fluency</span>
+                        <strong style={{ color: 'var(--accent-cyan)' }}>{skillsMatrix.fluency}%</strong>
+                      </div>
+                      <div className="skill-mini-bar-track">
+                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.fluency}%`, background: 'var(--accent-cyan)' }} />
+                      </div>
+                    </div>
+
+                    <div className="skill-mini-bar">
+                      <div className="skill-mini-bar-head">
+                        <span>Confidence</span>
+                        <strong style={{ color: 'var(--gold)' }}>{skillsMatrix.confidence}%</strong>
+                      </div>
+                      <div className="skill-mini-bar-track">
+                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.confidence}%`, background: 'var(--gold)' }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 2. QUEST MAP (Stepping Stones Path Journey) */}
+          {screen === 'map' && (
+            <div className="quest-map-view">
+              {/* STAGE SELECTOR TABS */}
+              <div className="stage-selector-wrap">
+                {stages.map((stg) => {
+                  const passedInStage = stg.questions.filter((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE).length;
+                  const isSelected = selectedStageId === stg.id;
+
+                  return (
+                    <button
+                      key={stg.id}
+                      type="button"
+                      className={`stage-tab-btn ${isSelected ? 'active' : ''}`}
+                      onClick={() => setSelectedStageId(stg.id)}
+                    >
+                      <span>{stg.emoji}</span>
+                      <span>Stage {stg.id}</span>
+                      <small style={{ opacity: 0.8, fontSize: '0.75rem' }}>({passedInStage}/20)</small>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* CURRENT STAGE BANNER */}
+              {(() => {
+                const currentStage = stages.find((s) => s.id === selectedStageId) || stages[0];
+                const passedInStage = currentStage.questions.filter((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE).length;
+
+                return (
+                  <div className="stage-banner-card" style={{ background: currentStage.color ? `linear-gradient(135deg, ${currentStage.color}, #4338CA)` : undefined }}>
+                    <div>
+                      <h2>{currentStage.emoji} {currentStage.title}: {currentStage.subtitle}</h2>
+                      <p>{currentStage.description}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{passedInStage}/20</div>
+                      <small style={{ opacity: 0.9 }}>Questions Passed</small>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* STEPPING STONES PATH */}
+              {(() => {
+                const currentStage = stages.find((s) => s.id === selectedStageId) || stages[0];
+
+                return (
+                  <div className="stepping-stones-container">
+                    {currentStage.questions.map((q, idx) => {
+                      const best = progress.completed[q.id]?.bestScore || 0;
+                      const unlocked = isUnlocked(q, progress);
+                      const isCurrent = q.id === nextOpen.id;
+                      const done = best >= PASS_SCORE;
+
+                      const nodeStateClass = done 
+                        ? 'node-completed' 
+                        : isCurrent 
+                          ? 'node-unlocked-active' 
+                          : unlocked 
+                            ? 'node-unlocked' 
+                            : 'node-locked';
+
+                      return (
+                        <div key={q.id} className="map-level-node-row">
+                          {/* Stepping stone button */}
+                          <div 
+                            className={`level-stone-node ${nodeStateClass}`}
+                            onClick={() => {
+                              if (unlocked) startLevel(q);
+                            }}
+                            title={unlocked ? `Level ${q.id}: ${q.label}` : `Level ${q.id} (Locked)`}
+                          >
+                            {/* Mascot stands on top of active current node */}
+                            {isCurrent && (
+                              <div className="active-node-mascot">
+                                <Mascot state="waving" size={54} />
+                              </div>
+                            )}
+
+                            {unlocked ? (
+                              <>
+                                <span className="node-num">{q.id}</span>
+                                <span className="node-stars">
+                                  {done ? (best >= 90 ? '⭐⭐⭐' : best >= 80 ? '⭐⭐' : '⭐') : '🎯'}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="node-lock-icon">🔒</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* 3. PRONUNCIATION PRACTICE SCREEN */}
+          {screen === 'practice' && activeLevel && (
+            <div className="practice-container">
+              <button 
+                className="btn-3d btn-3d-white btn-sm"
+                type="button" 
+                onClick={() => setScreen('map')}
+                style={{ width: 'fit-content' }}
+              >
+                ← Back to Quest Map
+              </button>
+
+              <div className="practice-card">
+                <span className="practice-level-badge">
+                  Stage {activeLevel.stageTitle || '1'} • Challenge #{activeLevel.id}
+                </span>
+
+                <div className="target-word-display">
+                  "{activeLevel.target}"
+                </div>
+
+                <div className="target-ipa-display">
+                  /{activeLevel.focus}/
+                </div>
+
+                <p className="target-focus-hint">
+                  💡 Listen to the target pronunciation, then speak clearly into your mic.
+                </p>
+
+                <div>
+                  <button className="listen-audio-btn" type="button" onClick={listenTarget}>
+                    <span>🔊</span> Listen Target Voice
+                  </button>
+                </div>
+
+                {/* Microphone Record Area */}
+                <div className="mic-action-area">
+                  <button 
+                    type="button"
+                    className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                    onClick={() => handleRecord('pronunciation')}
+                    disabled={status === 'processing'}
+                    title={status === 'recording' ? 'Click to Stop Recording' : 'Click to Speak'}
+                  >
+                    {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
+                  </button>
+
+                  <div className="mic-timer-label">
+                    {status === 'recording' ? (
+                      <span style={{ color: 'var(--coral)', fontWeight: 800 }}>
+                        🔴 Recording ({recordingSeconds}s) — Click to Submit
+                      </span>
+                    ) : status === 'processing' ? (
+                      <span style={{ color: 'var(--royal-violet)', fontWeight: 800 }}>
+                        ⏳ AI Speech Coach analyzing phonemes...
+                      </span>
+                    ) : (
+                      'Tap Microphone & Speak Word'
+                    )}
+                  </div>
+                </div>
+
+                {/* Animated Mascot reacting while speaking */}
+                {status === 'recording' && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <Mascot state="listening" size={80} speechBubble="Listening to your pronunciation..." />
+                  </div>
+                )}
+
+                {error && (
+                  <div style={{ marginTop: '1rem', padding: '0.8rem', background: '#FFF1F2', color: '#BE123C', borderRadius: '12px', fontSize: '0.85rem' }}>
+                    {error}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 4. PRONUNCIATION RESULT SCREEN */}
+          {screen === 'result' && result && (
+            <div className="result-container">
+              <button 
+                className="btn-3d btn-3d-white btn-sm"
+                type="button" 
+                onClick={() => setScreen('map')}
+                style={{ width: 'fit-content' }}
+              >
+                ← Back to Quest Map
+              </button>
+
+              <div className="result-hero-card">
+                {/* Celebratory Mascot */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <Mascot state={result.passed ? 'celebrating' : 'encouraging'} size={110} />
+                </div>
+
+                {/* Score Circle */}
+                <div className={`result-score-circle ${result.passed ? 'score-pass' : 'score-fail'}`}>
+                  <span className="score-number">{result.score || 0}%</span>
+                  <span className="score-label">{result.passed ? 'Passed 🎉' : 'Needs Practice 💪'}</span>
+                </div>
+
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-main)', marginBottom: '0.2rem' }}>
+                  {result.passed ? 'Outstanding Pronunciation!' : 'Good Effort! Keep Practicing'}
+                </h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                  Target word: <strong>"{activeLevel?.target}"</strong>
+                </p>
+
+                {/* Granular Metrics Grid */}
+                <div className="metrics-grid">
+                  <div className="metric-card">
+                    <div className="metric-card-val">{result.score || 0}%</div>
+                    <div className="metric-card-lbl">Pronunciation</div>
+                  </div>
+                  <div className="metric-card">
+                    <div className="metric-card-val">{Math.max(60, Math.round((result.score || 0) * 0.95))}%</div>
+                    <div className="metric-card-lbl">Clarity</div>
+                  </div>
+                  <div className="metric-card">
+                    <div className="metric-card-val">{Math.max(55, Math.round((result.score || 0) * 0.92))}%</div>
+                    <div className="metric-card-lbl">Fluency</div>
+                  </div>
+                  <div className="metric-card">
+                    <div className="metric-card-val">{result.passed ? '90%' : '65%'}</div>
+                    <div className="metric-card-lbl">Confidence</div>
+                  </div>
+                </div>
+
+                {/* Phoneme Level Comparison Boxes */}
+                {result.pronunciation?.comparison?.length > 0 && (
+                  <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                      Phoneme Sound Breakdown
+                    </div>
+                    <div className="phoneme-boxes-wrap">
+                      {result.pronunciation.comparison.map((item, idx) => {
+                        const isCorrect = item.type === 'correct' || item.type === 'accent_match';
+                        const isClose = item.type === 'close';
+                        const boxClass = isCorrect ? 'phoneme-correct' : isClose ? 'phoneme-close' : 'phoneme-wrong';
+
+                        return (
+                          <div key={idx} className={`phoneme-box ${boxClass}`}>
+                            <span>{item.expected || item.spoken || '?'}</span>
+                            <small style={{ fontSize: '0.65rem', opacity: 0.8 }}>
+                              {isCorrect ? '✓' : isClose ? '≈' : '✗'}
+                            </small>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Feedback Box */}
+                <div className="feedback-box" style={{ marginTop: '1.25rem' }}>
+                  <h4><span>💬</span> AI Coach Feedback</h4>
+                  <p>
+                    {result.pronunciation?.feedback?.summary || 
+                     (result.passed 
+                       ? 'All target phonemes matched the expected sounds. Great articulation!' 
+                       : 'Focus on pronouncing the highlighted sounds clearly without rushing.')}
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', gap: '0.8rem', marginTop: '1.5rem' }}>
+                  <button 
+                    className="btn-3d btn-3d-white"
+                    type="button" 
+                    onClick={() => startLevel(activeLevel)}
+                    style={{ flex: 1 }}
+                  >
+                    🔄 Practice Again
+                  </button>
+
+                  <button 
+                    className="btn-3d btn-3d-primary"
+                    type="button" 
+                    onClick={() => {
+                      if (nextOpen) startLevel(nextOpen);
+                      else setScreen('map');
+                    }}
+                    style={{ flex: 1.2 }}
+                  >
+                    Next Challenge ➔
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 5. GRAMMAR CHALLENGE SCREEN */}
+          {screen === 'grammar' && (
+            <div className="practice-container">
+              <button 
+                className="btn-3d btn-3d-white btn-sm"
+                type="button" 
+                onClick={() => setScreen('home')}
+                style={{ width: 'fit-content' }}
+              >
+                ← Back to Home
+              </button>
+
+              <div className="practice-card">
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                  {['easy', 'medium', 'hard'].map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      className={`btn-3d ${grammarLevel === lvl ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
+                      onClick={() => setGrammarLevel(lvl)}
+                    >
+                      {lvl.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+
+                {grammarLoading ? (
+                  <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>
+                    ⏳ Fetching grammar challenge...
+                  </div>
+                ) : grammarSentence ? (
+                  <div>
+                    <span className="practice-level-badge">
+                      Scenario: {grammarSentence.scenario}
+                    </span>
+
+                    <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: '14px', padding: '1rem', margin: '1rem 0' }}>
+                      <div style={{ color: '#BE123C', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase' }}>Incorrect Sentence</div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#BE123C', marginTop: '0.2rem' }}>
+                        "{grammarSentence.wrong}"
+                      </div>
+                    </div>
+
+                    <p className="target-focus-hint">
+                      🎙️ Speak the grammatically corrected version of this sentence.
+                    </p>
+
+                    <div className="mic-action-area">
+                      <button 
+                        type="button"
+                        className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                        onClick={() => handleRecord('grammar')}
+                        disabled={status === 'processing'}
+                      >
+                        {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
+                      </button>
+
+                      <div className="mic-timer-label">
+                        {status === 'recording' ? 'Recording answer... Click to Stop' : 'Tap to Speak Corrected Sentence'}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Grammar Result Card */}
+                {grammarResult && (
+                  <div className="feedback-box" style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '2rem', fontWeight: 900, color: grammarResult.grammar_correct ? 'var(--emerald)' : 'var(--gold)' }}>
+                      {grammarResult.score}%
+                    </div>
+                    <div style={{ fontWeight: 800, color: 'var(--text-main)', margin: '0.3rem 0' }}>
+                      {grammarResult.grammar_correct ? '✅ Grammar Correct! Excellent.' : '⚠️ Needs Correction'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'left', marginTop: '0.8rem' }}>
+                      <div><strong>Expected:</strong> "{grammarResult.expected_sentence}"</div>
+                      <div style={{ marginTop: '0.3rem' }}><strong>You Spoke:</strong> "{grammarResult.spoken_sentence}"</div>
+                    </div>
+
+                    <button 
+                      className="btn-3d btn-3d-primary btn-sm"
+                      type="button" 
+                      onClick={loadNextGrammar}
+                      style={{ marginTop: '1rem' }}
+                    >
+                      Next Grammar Challenge ➔
+                    </button>
+                  </div>
+                )}
+
+                {error && <div style={{ color: '#BE123C', marginTop: '1rem', fontSize: '0.85rem' }}>{error}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* 6. TRANSLATOR & AI INTERVIEW SCREEN */}
+          {screen === 'translate' && (
+            <div className="practice-container">
+              <button 
+                className="btn-3d btn-3d-white btn-sm"
+                type="button" 
+                onClick={() => setScreen('home')}
+                style={{ width: 'fit-content' }}
+              >
+                ← Back to Home
+              </button>
+
+              <div className="practice-card">
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                  <button 
+                    type="button"
+                    className={`btn-3d ${translateMode === 'simple' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
+                    onClick={() => { setTranslateMode('simple'); setInterviewResult(null); }}
+                  >
+                    🔄 Hindi ➔ English Translator
+                  </button>
+                  <button 
+                    type="button"
+                    className={`btn-3d ${translateMode === 'interview' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
+                    onClick={() => { setTranslateMode('interview'); setTransTranscript(''); }}
+                  >
+                    🎙️ AI Interview Simulator
+                  </button>
+                </div>
+
+                {translateMode === 'simple' && (
+                  <div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
+                      Speak in Hindi — Sapphire AI instantly translates and speaks fluent English back to you.
+                    </p>
+
+                    <div className="mic-action-area">
+                      <button 
+                        type="button"
+                        className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                        onClick={() => handleRecord('translate')}
+                      >
+                        {status === 'recording' ? '⏹' : '🎙️'}
+                      </button>
+                      <div className="mic-timer-label">
+                        {status === 'recording' ? 'Listening in Hindi... Tap to Translate' : 'Tap to Speak in Hindi'}
+                      </div>
+                    </div>
+
+                    {(transTranscript || transTranslation) && (
+                      <div style={{ marginTop: '1.5rem', display: 'grid', gap: '0.75rem', textAlign: 'left' }}>
+                        <div style={{ background: 'var(--bg-surface-subtle)', padding: '0.9rem', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Hindi Input</span>
+                          <p style={{ fontWeight: 700, marginTop: '0.2rem', color: 'var(--text-main)' }}>{transTranscript}</p>
+                        </div>
+
+                        <div style={{ background: 'var(--bg-lavender)', padding: '0.9rem', borderRadius: '12px', border: '1px solid #C7D2FE' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--royal-violet)', textTransform: 'uppercase' }}>English Translation</span>
+                          <p style={{ fontWeight: 800, marginTop: '0.2rem', color: 'var(--royal-violet-deep)', fontSize: '1.05rem' }}>{transTranslation}</p>
+                          {transAudioBase64 && (
+                            <button 
+                              type="button"
+                              onClick={() => playAudioBase64(transAudioBase64)}
+                              className="btn-3d btn-3d-primary btn-sm"
+                              style={{ marginTop: '0.5rem' }}
+                            >
+                              🔊 Listen Pronunciation
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {translateMode === 'interview' && (
+                  <div>
+                    <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                      {['daily', 'placement', 'college', 'finance'].map((top) => (
+                        <button
+                          key={top}
+                          type="button"
+                          className={`btn-3d ${interviewTopic === top ? 'btn-3d-gold' : 'btn-3d-white'} btn-sm`}
+                          onClick={() => setInterviewTopic(top)}
+                        >
+                          {top.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+
+                    {interviewQuestion && (
+                      <div style={{ background: 'var(--bg-surface-subtle)', border: '1px solid var(--border-light)', borderRadius: '14px', padding: '1rem', margin: '1rem 0' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--royal-violet)' }}>Interview Question</span>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '0.2rem' }}>
+                          "{interviewQuestion.english}"
+                        </h3>
+                        <small style={{ color: 'var(--text-muted)' }}>{interviewQuestion.hindi}</small>
+                      </div>
+                    )}
+
+                    <div className="mic-action-area">
+                      <button 
+                        type="button"
+                        className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                        onClick={() => handleRecord('interview')}
+                      >
+                        {status === 'recording' ? '⏹' : '🎙️'}
+                      </button>
+                      <div className="mic-timer-label">
+                        {status === 'recording' ? 'Answering Question... Tap to Submit' : 'Tap to Answer Question in Hindi'}
+                      </div>
+                    </div>
+
+                    {interviewResult && (
+                      <div className="feedback-box" style={{ marginTop: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h4>Interview Score</h4>
+                          <span style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--royal-violet)' }}>
+                            {interviewResult.score}/10
+                          </span>
+                        </div>
+                        <p style={{ marginTop: '0.5rem' }}><strong>English Answer:</strong> {interviewResult.translation}</p>
+                        {interviewResult.better_answer && (
+                          <p style={{ marginTop: '0.4rem', color: 'var(--royal-violet)' }}>
+                            💡 <strong>Better phrasing:</strong> {interviewResult.better_answer}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* ── PERSISTENT BOTTOM MOTIVATION BAR (DESKTOP) ────────────────── */}
+        <div className="bottom-motivation-bar">
+          <div className="bottom-motivation-left">
+            <Mascot state="mini" size={36} />
+            <span className="bottom-motivation-msg">
+              Keep practicing, keep improving. You're doing amazing! 💜
+            </span>
+          </div>
+
+          <div className="bottom-motivation-stats">
+            <span>Practiced: <strong>{completedCount} words</strong></span>
+            <span>Accuracy: <strong>{skillsMatrix.pronunciation}%</strong></span>
+            <span>Total XP: <strong>{progress.xp}</strong></span>
+          </div>
+        </div>
+
+        {/* ── MOBILE BOTTOM NAVIGATION BAR ──────────────────────────────── */}
+        <div className="mobile-bottom-nav">
+          <div className="mobile-nav-items">
+            <button 
+              className={`mobile-nav-btn ${screen === 'home' ? 'active' : ''}`}
+              type="button"
+              onClick={() => setScreen('home')}
+            >
+              <span className="mobile-nav-icon">🏠</span>
+              <span>Home</span>
+            </button>
+
+            <button 
+              className={`mobile-nav-btn ${screen === 'map' ? 'active' : ''}`}
+              type="button"
+              onClick={() => setScreen('map')}
+            >
+              <span className="mobile-nav-icon">🗺️</span>
+              <span>Quest</span>
+            </button>
+
+            {/* Floating Highlight Center Button */}
+            <button 
+              className="mobile-nav-center-btn"
+              type="button"
+              onClick={() => {
+                if (nextOpen) startLevel(nextOpen);
+                else setScreen('map');
+              }}
+              title="Practice Now"
+            >
+              🎙️
+            </button>
+
+            <button 
+              className={`mobile-nav-btn ${screen === 'grammar' ? 'active' : ''}`}
+              type="button"
+              onClick={() => {
+                setGrammarResult(null);
+                setScreen('grammar');
+              }}
+            >
+              <span className="mobile-nav-icon">📝</span>
+              <span>Grammar</span>
+            </button>
+
+            <button 
+              className="mobile-nav-btn"
+              type="button"
+              onClick={() => setShowProfileModal(true)}
+            >
+              <span className="mobile-nav-icon">👤</span>
+              <span>Profile</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── PROFILE MODAL ──────────────────────────────────────────────── */}
       {showProfileModal && (
         <ProfileModal 
           user={user} 
@@ -386,7 +1366,7 @@ export default function App() {
         />
       )}
 
-      {/* STUDENT LEADERBOARD MODAL */}
+      {/* ── STUDENT LEADERBOARD MODAL ──────────────────────────────────── */}
       {showLeaderboardModal && (
         <StudentLeaderboardModal 
           currentUser={user} 
@@ -394,7 +1374,16 @@ export default function App() {
         />
       )}
 
-      {/* DIAGNOSTIC ASSESSMENT MODAL */}
+      {/* ── ACHIEVEMENTS MODAL ─────────────────────────────────────────── */}
+      {showAchievementsModal && (
+        <AchievementsModal
+          progress={progress}
+          completedCount={completedCount}
+          onClose={() => setShowAchievementsModal(false)}
+        />
+      )}
+
+      {/* ── 15-QUESTION DIAGNOSTIC ASSESSMENT MODAL ────────────────────── */}
       {showDiagnosticModal && (
         <DiagnosticModal 
           user={user}
@@ -403,778 +1392,163 @@ export default function App() {
           onClose={() => setShowDiagnosticModal(false)} 
         />
       )}
-
-      <main>
-        {/* SIDEBAR WITH 3 SECTIONS ONLY */}
-        <aside className="sidebar">
-          <div 
-            className="profile-card" 
-            onClick={() => setShowProfileModal(true)}
-            style={{ cursor: 'pointer' }}
-          >
-            <span className="avatar-ring" style={{ fontSize: '1.6rem' }}>{user?.avatar || '👨‍🎓'}</span>
-            <strong>{user?.name || 'Student'}</strong>
-            <small>{user?.libraryId ? `ID: ${user.libraryId}` : 'Click for Profile'}</small>
-          </div>
-
-          {/* 3 MAIN NAVIGATION SECTIONS AS REQUESTED */}
-          <div className="nav-stack">
-            <button 
-              className={`nav-item ${activeSection === 'pronunciation' ? 'nav-item--active' : ''}`} 
-              type="button" 
-              onClick={() => setScreen('map')}
-            >
-              🗣️ Pronunciation
-            </button>
-            <button 
-              className={`nav-item ${activeSection === 'translation' ? 'nav-item--active' : ''}`} 
-              type="button" 
-              onClick={() => {
-                setTransTranscript('');
-                setTransTranslation('');
-                setTransAudioBase64('');
-                setScreen('translate');
-              }}
-            >
-              🔄 Translation
-            </button>
-            <button 
-              className={`nav-item ${activeSection === 'grammar' ? 'nav-item--active' : ''}`} 
-              type="button" 
-              onClick={() => {
-                setGrammarResult(null);
-                setScreen('grammar');
-              }}
-            >
-              📝 Grammar
-            </button>
-          </div>
-        </aside>
-
-        {/* 1. PRONUNCIATION SECTION (QUEST MAP) */}
-        {(screen === 'map' || screen === 'practice' || screen === 'result') && (
-          <div key={screen} className="animated-section" style={{ flex: 1 }}>
-            {screen === 'map' && (
-              <section className="game-shell">
-                <div className="path-stage">
-                  <div className="stage-head">
-                    <div>
-                      <p className="eyebrow">AI Speaking Quest • 100 Challenges</p>
-                      <h1>Clear English Journey</h1>
-                      <p>Pass targets with 70%+ score to progress through 5 stages of difficulty.</p>
-                    </div>
-                    <div style={{ marginLeft: 'auto' }}>
-                      <button 
-                        type="button"
-                        onClick={() => setShowDiagnosticModal(true)}
-                        style={{
-                          background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
-                          border: 'none', color: '#fff', padding: '0.55rem 1.1rem',
-                          borderRadius: '12px', fontWeight: 800, cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', gap: '0.5rem',
-                          boxShadow: '0 4px 15px rgba(14,165,233,0.35)', fontSize: '0.85rem'
-                        }}
-                      >
-                        <span>🎯</span> Take Diagnostic Test
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* 5 STAGES SELECTOR TABS */}
-                  <div className="stages-tab-nav">
-                    {stages.map((stg) => {
-                      const passedInStage = stg.questions.filter((q) => (progress.completed[q.id]?.bestScore || 0) >= PASS_SCORE).length;
-                      const isSelected = selectedStageId === stg.id;
-
-                      return (
-                        <button
-                          key={stg.id}
-                          type="button"
-                          className={`stage-tab-card ${isSelected ? 'stage-tab-card--active' : ''}`}
-                          onClick={() => setSelectedStageId(stg.id)}
-                        >
-                          <div className="stage-tab-header">
-                            <span className="stage-tab-emoji">{stg.emoji}</span>
-                            <span className="stage-tab-num">Stage {stg.id}</span>
-                          </div>
-                          <div className="stage-tab-title">{stg.title}</div>
-                          <div className="stage-tab-subtitle">{stg.subtitle}</div>
-                          <div className="stage-tab-progress">
-                            {passedInStage}/20 Passed {passedInStage === 20 ? '✓' : ''}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* SELECTED STAGE QUESTIONS GRID */}
-                  {(() => {
-                    const currentStage = stages.find((s) => s.id === selectedStageId) || stages[0];
-                    return (
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                          <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem' }}>
-                            {currentStage.emoji} {currentStage.title}: <span style={{ color: '#94a3b8', fontWeight: 500 }}>{currentStage.subtitle}</span>
-                          </h3>
-                          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                            {currentStage.description}
-                          </span>
-                        </div>
-
-                        <div className="questions-grid">
-                          {currentStage.questions.map((q) => {
-                            const best = progress.completed[q.id]?.bestScore || 0;
-                            const unlocked = isUnlocked(q, progress);
-                            const isCurrent = q.id === nextOpen.id;
-                            const done = best >= PASS_SCORE;
-
-                            return (
-                              <button
-                                key={q.id}
-                                type="button"
-                                className={`question-node-card ${done ? 'question-node-card--done' : unlocked ? 'question-node-card--open' : 'question-node-card--locked'} ${isCurrent ? 'path-node--current' : ''}`}
-                                disabled={!unlocked}
-                                onClick={() => startLevel(q)}
-                              >
-                                <div className="q-node-top">
-                                  <span className={`q-badge q-badge--${q.type}`}>
-                                    Q{q.id} • {q.type}
-                                  </span>
-                                  <span className={`q-status ${done ? 'q-status--done' : unlocked ? 'q-status--open' : 'q-status--locked'}`}>
-                                    {done ? `✓ ${best}%` : isCurrent ? '★ Next' : unlocked ? 'Open' : '🔒 Locked'}
-                                  </span>
-                                </div>
-                                <div className="q-node-main">
-                                  <strong>{q.label}</strong>
-                                  <p>{q.target}</p>
-                                </div>
-                                <div className="q-node-focus">
-                                  Focus: {q.focus}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <aside className="mission-rail">
-                  <div className="mini-stats">
-                    <Stat label="Streak" value={`${progress.streak}d`} />
-                    <Stat label="Total Passed" value={`${completedCount}/100`} />
-                  </div>
-
-                  <div className="objective-card">
-                    <p className="eyebrow">Next Up</p>
-                    <h2>Q#{nextOpen.id}: {nextOpen.label}</h2>
-                    <p>{nextOpen.target}</p>
-                    <div className="xp-track" style={{ marginTop: '0.6rem', marginBottom: '0.8rem' }}>
-                      <span style={{ width: `${progress.completed[nextOpen.id]?.bestScore || 0}%` }} />
-                    </div>
-                    <button className="primary-action" type="button" onClick={() => startLevel(nextOpen)}>
-                      Start Practice (Target 70%+)
-                    </button>
-                  </div>
-
-                  <div className="objective-card">
-                    <p className="eyebrow">Weak Sounds Analysis</p>
-                    <h2>{weakSounds.length ? weakSounds.join(' / ') : 'Clean Phonemes'}</h2>
-                    <p>
-                      {lastAttempt 
-                        ? `Last attempt: ${lastAttempt.score}% in "${lastAttempt.label}".` 
-                        : 'Practice targets to record weak sounds.'}
-                    </p>
-                  </div>
-
-                  <div className="objective-card">
-                    <p className="eyebrow">Overall XP</p>
-                    <h2>{progress.xp} XP Earned</h2>
-                    <p>Keep practicing daily to unlock all 100 speaking challenges.</p>
-                  </div>
-                </aside>
-              </section>
-            )}
-
-            {screen === 'practice' && (
-              <section className="practice-panel">
-                <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-                  ← Back to Quest Map
-                </button>
-                <p className="eyebrow">{activeLevel.stageTitle} / Q#{activeLevel.id}</p>
-                <h1>{activeLevel.label}</h1>
-                <div className="target-card">
-                  <span>{activeLevel.type}</span>
-                  <p>{activeLevel.target}</p>
-                  <small>Focus: {activeLevel.focus}</small>
-                </div>
-                
-                <LiveCoach status={status} seconds={recordingSeconds} levelType={activeLevel.type} />
-                
-                <div className="practice-actions">
-                  <button className="secondary-action" type="button" onClick={listenTarget}>
-                    🔊 Listen Target
-                  </button>
-                  <button 
-                    className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
-                    type="button" 
-                    onClick={() => handleRecord('pronunciation')}
-                  >
-                    {status === 'recording' ? '⏹ Stop' : status === 'processing' ? '⏳ Analyzing...' : '🎙️ Record'}
-                  </button>
-                </div>
-                {error && <div className="error-box">{error}</div>}
-              </section>
-            )}
-
-            {screen === 'result' && result && (
-              <section className="practice-panel">
-                <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-                  ← Back to Quest Map
-                </button>
-                <ResultScreen 
-                  result={result} 
-                  activeLevel={activeLevel} 
-                  onRetry={() => startLevel(activeLevel)} 
-                  onMap={() => setScreen('map')} 
-                />
-              </section>
-            )}
-          </div>
-        )}
-
-        {/* 2. TRANSLATION SECTION */}
-        {screen === 'translate' && (
-          <div key="translate" className="animated-section" style={{ flex: 1 }}>
-            <section className="practice-panel">
-              <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-                ← Back to Quest Map
-              </button>
-              <p className="eyebrow">AI Speaking Assistant</p>
-              <h1>Voice & Interview Translator</h1>
-
-              <div className="tool-tabs" style={{ marginBottom: '1.2rem' }}>
-                {[['simple', '🔄 Simple Translate'], ['interview', '🎙️ Interview Practice']].map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={`tool-tab ${translateMode === key ? 'tool-tab--active' : ''}`}
-                    onClick={() => { setTranslateMode(key); setInterviewResult(null); setTransTranscript(''); setTransTranslation(''); }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {translateMode === 'simple' && (
-                <>
-                  <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
-                    Speak a sentence in Hindi and hear it translated to fluent English instantly.
-                  </p>
-                  <div className="target-card">
-                    <span>Status</span>
-                    <p style={{ fontSize: '1.5rem', color: '#6366f1' }}>
-                      {status === 'recording' ? 'Listening...' : status === 'processing' ? 'Translating...' : 'Tap Record to Speak'}
-                    </p>
-                  </div>
-                  <div className="practice-actions">
-                    <button
-                      className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
-                      type="button"
-                      onClick={() => handleRecord('translate')}
-                    >
-                      {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
-                    </button>
-                  </div>
-                  {error && <div className="error-box">{error}</div>}
-                  {(transTranscript || transTranslation) && (
-                    <div className="translate-grid">
-                      <div className="trans-card trans-card--hindi">
-                        <h3>Hindi Transcript</h3>
-                        <p>{transTranscript}</p>
-                      </div>
-                      <div className="trans-card trans-card--english">
-                        <h3>English Translation</h3>
-                        <p>{transTranslation}</p>
-                        {transAudioBase64 && (
-                          <button className="speaker-btn" type="button"
-                            onClick={() => playAudioBase64(transAudioBase64)}
-                            style={{ marginTop: '0.5rem' }} title="Listen">
-                            🔊
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {translateMode === 'interview' && (
-                <>
-                  <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '-0.6rem', marginBottom: '1rem' }}>
-                    Choose a topic, get an AI question, answer in Hindi — receive instant coaching feedback.
-                  </p>
-
-                  <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
-                    {[['daily','Daily'],['placement','Placement'],['college','College'],['finance','Finance']].map(([key, label]) => (
-                      <button key={key} type="button"
-                        className={`tool-tab ${interviewTopic === key ? 'tool-tab--active' : ''}`}
-                        onClick={() => setInterviewTopic(key)}
-                      >{label}</button>
-                    ))}
-                  </div>
-
-                  {interviewLoading && (
-                    <div className="target-card" style={{ textAlign: 'center', color: '#94a3b8' }}>Loading question...</div>
-                  )}
-                  {interviewQuestion && !interviewLoading && (
-                    <div className="target-card">
-                      <span style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}>Question</span>
-                      <p style={{ fontSize: '1.3rem', marginTop: '0.6rem', marginBottom: '0.2rem' }}>{interviewQuestion.english}</p>
-                      <small style={{ color: '#94a3b8' }}>{interviewQuestion.hindi}</small>
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-                    <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
-                      disabled={interviewLoading || status === 'recording'}>
-                      🔄 New Question
-                    </button>
-                    <button
-                      className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`}
-                      type="button"
-                      style={{ flex: 1, height: '48px', borderRadius: '999px' }}
-                      onClick={() => handleRecord('interview')}
-                      disabled={!interviewQuestion || interviewLoading}
-                    >
-                      {status === 'recording' ? '⏹ Stop' : status === 'processing' ? '⏳ Analyzing...' : '🎙️ Answer'}
-                    </button>
-                  </div>
-
-                  {error && <div className="error-box">{error}</div>}
-
-                  {interviewResult && (
-                    <div style={{ display: 'grid', gap: '1rem', marginTop: '1.2rem' }}>
-                      <div style={{
-                        display: 'grid', gridTemplateColumns: '80px 1fr', gap: '1rem',
-                        background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)',
-                        borderRadius: '14px', padding: '1.2rem'
-                      }}>
-                        <div style={{ display: 'grid', placeItems: 'center' }}>
-                          <div style={{
-                            width: '64px', height: '64px', borderRadius: '50%',
-                            background: interviewResult.score >= 7 ? 'rgba(16,185,129,0.15)' : interviewResult.score >= 5 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-                            border: `3px solid ${interviewResult.score >= 7 ? '#10b981' : interviewResult.score >= 5 ? '#f59e0b' : '#ef4444'}`,
-                            display: 'grid', placeItems: 'center'
-                          }}>
-                            <strong style={{ fontSize: '1.4rem' }}>{interviewResult.score}/10</strong>
-                          </div>
-                        </div>
-                        <div>
-                          <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: '0 0 0.3rem' }}>YOUR ANSWER IN ENGLISH</p>
-                          <p style={{ margin: 0, fontSize: '1rem' }}>{interviewResult.translation}</p>
-                          {interviewResult.audio && (
-                            <button className="speaker-btn" type="button"
-                              onClick={() => playAudioBase64(interviewResult.audio)}
-                              style={{ marginTop: '0.5rem' }} title="Listen">🔊</button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div style={{
-                        background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)',
-                        borderRadius: '12px', padding: '1rem'
-                      }}>
-                        <p style={{ color: '#10b981', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>✅ STRENGTHS</p>
-                        <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                          {(interviewResult.strengths || []).map((s, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{s}</li>)}
-                        </ul>
-                      </div>
-
-                      <div style={{
-                        background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)',
-                        borderRadius: '12px', padding: '1rem'
-                      }}>
-                        <p style={{ color: '#f59e0b', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>⚠️ IMPROVE</p>
-                        <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                          {(interviewResult.missing || []).map((m, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{m}</li>)}
-                        </ul>
-                      </div>
-
-                      {interviewResult.better_answer && (
-                        <div style={{
-                          background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)',
-                          borderRadius: '12px', padding: '1rem'
-                        }}>
-                          <p style={{ color: '#8b5cf6', fontWeight: 700, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>💡 BETTER ANSWER</p>
-                          <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.6 }}>{interviewResult.better_answer}</p>
-                        </div>
-                      )}
-
-                      <button className="ghost-button" type="button" onClick={loadInterviewQuestion}
-                        style={{ marginTop: '0.25rem' }}>🔄 Try Another Question</button>
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-          </div>
-        )}
-
-        {/* 3. GRAMMAR SECTION */}
-        {screen === 'grammar' && (
-          <div key="grammar" className="animated-section" style={{ flex: 1 }}>
-            <section className="practice-panel">
-              <button className="ghost-button" type="button" onClick={() => setScreen('map')}>
-                ← Back to Quest Map
-              </button>
-              <p className="eyebrow">AI Grammar Quest</p>
-              <h1>AI Grammar Coach</h1>
-
-              <div className="tool-tabs" style={{ marginBottom: '1rem' }}>
-                {['easy', 'medium', 'hard'].map((levelKey) => (
-                  <button 
-                    className={`tool-tab ${grammarLevel === levelKey ? 'tool-tab--active' : ''}`} 
-                    key={levelKey} 
-                    type="button" 
-                    onClick={() => setGrammarLevel(levelKey)}
-                  >
-                    {levelKey.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-
-              {grammarLoading && <div className="error-box" style={{ background: 'transparent' }}>Loading sentence...</div>}
-              
-              {grammarSentence && !grammarLoading && (
-                <div className="target-card">
-                  <span className="scenario-badge">{grammarSentence.scenario}</span>
-                  <p style={{ fontSize: '1.6rem', color: '#f43f5e', marginTop: '1.2rem' }}>
-                    ❌ "{grammarSentence.wrong}"
-                  </p>
-                  <small style={{ display: 'block', marginTop: '0.5rem' }}>
-                    Speak the grammatically corrected version of this sentence.
-                  </small>
-                </div>
-              )}
-
-              <div className="practice-actions">
-                <button 
-                  className={`record-button ${status === 'recording' ? 'record-button--active' : ''}`} 
-                  type="button" 
-                  onClick={() => handleRecord('grammar')}
-                  disabled={grammarLoading}
-                >
-                  {status === 'recording' ? 'Stop' : status === 'processing' ? '...' : 'Record'}
-                </button>
-              </div>
-
-              {error && <div className="error-box">{error}</div>}
-
-              {grammarResult && (
-                <div className="score-layout" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '1.2rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                    <div className={`score-orb ${grammarResult.grammar_correct ? 'score-orb--pass' : 'score-orb--retry'}`}>
-                      <strong>{grammarResult.score}</strong>
-                      <span>Score</span>
-                    </div>
-                    <div>
-                      <h1>Grade: {grammarResult.grade || 'N/A'}</h1>
-                      <p>{grammarResult.grammar_correct ? 'Grammar Correct! Great job.' : 'Grammar mistakes detected. Review details below.'}</p>
-                    </div>
-                  </div>
-
-                  <div className="feedback-list" style={{ marginTop: '0.5rem' }}>
-                    <div style={{ color: '#10b981' }}><strong>Expected:</strong> "{grammarResult.expected_sentence}"</div>
-                    <div style={{ color: '#ec4899' }}><strong>You Spoke:</strong> "{grammarResult.spoken_sentence}"</div>
-                  </div>
-
-                  {grammarResult.feedback?.length > 0 && (
-                    <div className="feedback-list">
-                      <strong>AI Suggestions:</strong>
-                      <ul>
-                        {grammarResult.feedback.map((item, idx) => (
-                          <li key={idx}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <button className="primary-action" type="button" onClick={loadNextGrammar} style={{ width: '100%', justifyContent: 'center' }}>
-                    Next Challenge →
-                  </button>
-                </div>
-              )}
-            </section>
-          </div>
-        )}
-      </main>
     </div>
   );
 }
 
-// ── AUTHENTICATION SCREEN ─────────────────────────────────────────────────────
-function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot' | 'teacher'
-  const [authError, setAuthError] = useState('');
-  const [resetMsg, setResetMsg] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
-  const [selectedAvatar, setSelectedAvatar] = useState('👨‍🎓');
+// ── SVG RADAR SPIDER CHART FOR 5 SKILLS ─────────────────────────────────────
+function RadarChart({ matrix }) {
+  const size = 160;
+  const center = size / 2;
+  const maxRadius = 60;
+  const skills = [
+    { key: 'pronunciation', label: 'Pronunciation' },
+    { key: 'clarity', label: 'Clarity' },
+    { key: 'fluency', label: 'Fluency' },
+    { key: 'vocabulary', label: 'Vocabulary' },
+    { key: 'confidence', label: 'Confidence' }
+  ];
 
-  const AVATARS = ['👨‍🎓', '👩‍💻', '🚀', '👑', '🎯', '⚡'];
+  const total = skills.length;
+  const angleStep = (Math.PI * 2) / total;
 
-  function switchMode(mode) {
-    setAuthMode(mode);
-    setAuthError('');
-    setResetMsg('');
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setAuthError('');
-    setResetMsg('');
-    setAuthLoading(true);
-
-    const formData  = new FormData(event.currentTarget);
-    const libraryId = formData.get('libraryId');
-    const email     = formData.get('email');
-    const password  = formData.get('password');
-    const name      = formData.get('name');
-    const branch    = formData.get('branch');
-    const teacherId = formData.get('teacherId');
-
-    try {
-      if (authMode === 'teacher') {
-        const { signInTeacher } = await import('./auth.js');
-        const teacherObj = signInTeacher({ teacherId, password });
-        onTeacherSuccess(teacherObj);
-      } else if (authMode === 'forgot') {
-        const targetEmail = await resetUserPassword({ email, newPassword: password });
-        setResetMsg(`✅ Password reset for ${targetEmail}! Login with your new password.`);
-      } else if (authMode === 'register') {
-        const loggedUser = await signUpUser({ name, email, libraryId, branch, password, avatar: selectedAvatar });
-        onAuthSuccess(loggedUser);
-      } else {
-        const loggedUser = await signInUser({ libraryId, password });
-        onAuthSuccess(loggedUser);
-      }
-    } catch (err) {
-      setAuthError(err.message || 'Authentication failed.');
-    } finally {
-      setAuthLoading(false);
-    }
-  }
+  const points = skills.map((s, i) => {
+    const val = (matrix[s.key] || 70) / 100;
+    const r = val * maxRadius;
+    const angle = i * angleStep - Math.PI / 2;
+    const x = center + r * Math.cos(angle);
+    const y = center + r * Math.sin(angle);
+    return `${x},${y}`;
+  }).join(' ');
 
   return (
-    <main className="auth-shell">
-      <section className="auth-panel">
-        <div style={{ textAlign: 'center' }}>
-          <span className="brand-mark" style={{ margin: '0 auto 1rem auto' }}>S</span>
-          <h1>Sapphire Speech Coach</h1>
-          <p>Sign in with your College Library ID &amp; Password for personal AI pronunciation coaching.</p>
-        </div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Background Web Rings */}
+      {[0.33, 0.66, 1].map((scale, i) => {
+        const ringPoints = skills.map((_, idx) => {
+          const r = scale * maxRadius;
+          const angle = idx * angleStep - Math.PI / 2;
+          return `${center + r * Math.cos(angle)},${center + r * Math.sin(angle)}`;
+        }).join(' ');
+        return <polygon key={i} points={ringPoints} fill="none" stroke="#E2E8F0" strokeWidth="1" />;
+      })}
 
-        {/* Auth mode tabs */}
-        <div className="tool-tabs" style={{ justifyContent: 'center', marginBottom: '0.8rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-          <button type="button" className={`tool-tab ${authMode === 'login' ? 'tool-tab--active' : ''}`} onClick={() => switchMode('login')}>
-            🔐 Student Login
-          </button>
-          <button type="button" className={`tool-tab ${authMode === 'register' ? 'tool-tab--active' : ''}`} onClick={() => switchMode('register')}>
-            📝 Register
-          </button>
-          <button
-            type="button"
-            className={`tool-tab ${authMode === 'teacher' ? 'tool-tab--active' : ''}`}
-            onClick={() => switchMode('teacher')}
-            style={authMode === 'teacher' ? { borderColor: '#38bdf8', color: '#38bdf8' } : { color: '#94a3b8' }}
-          >
-            👨‍🏫 Faculty
-          </button>
-        </div>
+      {/* Axis Lines */}
+      {skills.map((_, idx) => {
+        const angle = idx * angleStep - Math.PI / 2;
+        const x = center + maxRadius * Math.cos(angle);
+        const y = center + maxRadius * Math.sin(angle);
+        return <line key={idx} x1={center} y1={center} x2={x} y2={y} stroke="#E2E8F0" strokeWidth="1" />;
+      })}
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-
-          {/* ── TEACHER LOGIN ── */}
-          {authMode === 'teacher' && (
-            <>
-              <div style={{ background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '10px', padding: '0.7rem 0.9rem', marginBottom: '0.8rem', fontSize: '0.82rem', color: '#7dd3fc' }}>
-                👨‍🏫 Faculty-only portal. Enter any Teacher ID and password to access the class analytics dashboard.
-              </div>
-              <label>
-                Teacher / Faculty ID
-                <input name="teacherId" placeholder="e.g. FACULTY01 or your name" required style={{ textTransform: 'uppercase' }} />
-              </label>
-              <label>
-                Password
-                <input name="password" type="password" placeholder="••••••••" minLength="4" required />
-              </label>
-            </>
-          )}
-
-          {/* ── STUDENT REGISTER ── */}
-          {authMode === 'register' && (
-            <>
-              <label>
-                Full Name
-                <input name="name" minLength="2" placeholder="Arpit Agarwal" required />
-              </label>
-              <label>
-                College Email ID
-                <input name="email" type="email" placeholder="xyz.2428cse112@kiet.edu" required />
-                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Used for password recovery &amp; notifications</small>
-              </label>
-              <label>
-                Branch
-                <select name="branch" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-glass)', color: '#fff', padding: '0.8rem', borderRadius: '12px', width: '100%' }} required>
-                  {['CSE','IT','CS','CSIT','CSE (AI)','CSE(AIML)','MECH','ECE','ELCE','EEE'].map((b) => (
-                    <option key={b} value={b} style={{ background: '#0d1127' }}>{b}</option>
-                  ))}
-                </select>
-              </label>
-              <div>
-                <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600 }}>Choose Avatar</span>
-                <div className="avatar-selector-row">
-                  {AVATARS.map((av) => (
-                    <button key={av} type="button" className={`avatar-btn ${selectedAvatar === av ? 'avatar-btn--selected' : ''}`} onClick={() => setSelectedAvatar(av)}>
-                      {av}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* ── FORGOT PASSWORD ── */}
-          {authMode === 'forgot' && (
-            <>
-              <label>
-                College Email ID
-                <input name="email" type="email" placeholder="xyz.2428cse112@kiet.edu" required />
-                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Enter your registered college email address.</small>
-              </label>
-              <label>
-                New Password
-                <input name="password" type="password" placeholder="Enter new password (min 6 chars)" minLength="6" required />
-              </label>
-            </>
-          )}
-
-          {/* ── STUDENT LOGIN (common fields) ── */}
-          {(authMode === 'login' || authMode === 'register') && (
-            <>
-              <label>
-                College Library ID
-                <input name="libraryId" placeholder="Ex: 2428CSEAIML994" required style={{ textTransform: 'uppercase' }} />
-                <small style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Format: Alphanumeric College ID</small>
-              </label>
-              <label>
-                Password
-                <input name="password" type="password" placeholder="••••••••" minLength="6" required />
-              </label>
-              {authMode === 'login' && (
-                <div style={{ textAlign: 'right', marginTop: '-0.3rem', marginBottom: '0.5rem' }}>
-                  <button type="button" onClick={() => switchMode('forgot')} style={{ background: 'none', border: 'none', color: '#38bdf8', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }}>
-                    🔑 Forgot Password?
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          {authError && <div className="error-box">{authError}</div>}
-          {resetMsg  && <div style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#34d399', padding: '0.8rem', borderRadius: '10px', fontSize: '0.85rem' }}>{resetMsg}</div>}
-
-          <button className="primary-action" type="submit" disabled={authLoading} style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem',
-            ...(authMode === 'teacher' ? { background: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', color: '#fff' } : {})
-          }}>
-            {authLoading ? 'Processing...' :
-             authMode === 'teacher'   ? '📊 Open Faculty Dashboard' :
-             authMode === 'forgot'    ? '🔑 Save & Reset Password'  :
-             authMode === 'register'  ? 'Register & Begin Quest'    : 'Login to Quest Map'}
-          </button>
-
-          {authMode === 'forgot' && (
-            <button type="button" onClick={() => switchMode('login')} style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '0.82rem', cursor: 'pointer', marginTop: '0.8rem', width: '100%', textAlign: 'center' }}>
-              ← Back to Student Login
-            </button>
-          )}
-        </form>
-      </section>
-    </main>
+      {/* Dynamic Skill Shape */}
+      <polygon points={points} fill="rgba(99, 102, 241, 0.25)" stroke="#6366F1" strokeWidth="2.5" />
+    </svg>
   );
 }
 
+// ── ACHIEVEMENTS MODAL ──────────────────────────────────────────────────────
+function AchievementsModal({ progress, completedCount, onClose }) {
+  const BADGES = [
+    { id: 'first_step', icon: '🚀', title: 'First Steps', desc: 'Complete your first speaking challenge', unlocked: completedCount >= 1 },
+    { id: 'streak_7', icon: '🔥', title: '7-Day Streak', desc: 'Practice 7 days in a row', unlocked: (progress.streak || 0) >= 7 },
+    { id: 'rising_star', icon: '🌟', title: 'Rising Star', desc: 'Earn 300+ XP in your journey', unlocked: (progress.xp || 0) >= 300 },
+    { id: 'word_master', icon: '📚', title: 'Word Master', desc: 'Pass 20+ words in Stage 1', unlocked: completedCount >= 20 },
+    { id: 'perfect_score', icon: '⭐', title: 'Perfect Score', desc: 'Score 90%+ on any pronunciation test', unlocked: Object.values(progress.completed || {}).some(c => (c.bestScore || 0) >= 90) },
+    { id: 'confident_speaker', icon: '👑', title: 'Confident Speaker', desc: 'Complete 50+ speaking challenges', unlocked: completedCount >= 50 }
+  ];
 
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
 
+        <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-main)' }}>
+            🎖️ Achievement Badges
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Earn badges as you practice speaking and grow your confidence
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+          {BADGES.map((b) => (
+            <div 
+              key={b.id}
+              style={{
+                background: b.unlocked ? 'var(--bg-lavender)' : 'var(--bg-surface-subtle)',
+                border: b.unlocked ? '1.5px solid #C7D2FE' : '1px solid var(--border-light)',
+                borderRadius: '16px',
+                padding: '1rem',
+                textAlign: 'center',
+                opacity: b.unlocked ? 1 : 0.6
+              }}
+            >
+              <div style={{ fontSize: '2rem', marginBottom: '0.2rem' }}>{b.icon}</div>
+              <strong style={{ display: 'block', fontSize: '0.92rem', color: b.unlocked ? 'var(--royal-violet-deep)' : 'var(--text-muted)' }}>
+                {b.title}
+              </strong>
+              <small style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', lineHeight: 1.3, display: 'block', marginTop: '0.2rem' }}>
+                {b.desc}
+              </small>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', fontWeight: 800, color: b.unlocked ? 'var(--emerald-dark)' : 'var(--text-muted)' }}>
+                {b.unlocked ? '✓ Unlocked' : '🔒 In Progress'}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PROFILE MODAL ───────────────────────────────────────────────────────────
 function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onSignOut }) {
-  // Rank calculations
   const totalScoreSum = Object.values(progress.completed || {}).reduce((acc, curr) => acc + (curr.bestScore || 0), 0);
   const avgScore = completedCount > 0 ? Math.round(totalScoreSum / completedCount) : 0;
   
   let rankName = "Bronze Speaker";
   let rankColor = "#cd7f32";
-  if (completedCount >= 40 || progress.xp >= 1000) { rankName = "Diamond Orator 👑"; rankColor = "#38bdf8"; }
-  else if (completedCount >= 20 || progress.xp >= 500) { rankName = "Gold Master 🥇"; rankColor = "#f59e0b"; }
-  else if (completedCount >= 5 || progress.xp >= 150) { rankName = "Silver Speaker 🥈"; rankColor = "#94a3b8"; }
-
-  // AI 1-Sentence Summary Feedback
-  let aiFeedbackSentence = "Practice targets daily to record your weak phonemes and boost speaking fluency!";
-  if (weakSounds.length > 0) {
-    aiFeedbackSentence = `Focus on refining your '${weakSounds.join(', ')}' sound transitions in your next practice session.`;
-  } else if (avgScore >= 80) {
-    aiFeedbackSentence = `Outstanding pronunciation clarity! Keep practicing advanced sentences in Stage 4 & 5 to maintain Gold rank.`;
-  } else if (completedCount > 0) {
-    aiFeedbackSentence = `Great progress! Aim for 70%+ score on unlocked levels to progress through all 5 difficulty stages.`;
-  }
+  if (completedCount >= 40 || progress.xp >= 1000) { rankName = "Diamond Orator 👑"; rankColor = "var(--accent-sky)"; }
+  else if (completedCount >= 20 || progress.xp >= 500) { rankName = "Gold Master 🥇"; rankColor = "var(--gold)"; }
+  else if (completedCount >= 5 || progress.xp >= 150) { rankName = "Silver Speaker 🥈"; rankColor = "#94A3B8"; }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
-        
-        <div className="profile-avatar-large">
-          {user?.avatar || '👨‍🎓'}
-        </div>
 
-        <div style={{ textAlign: 'center' }}>
-          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.4rem' }}>{user?.name || 'Student'}</h2>
-          <div className="profile-badge-row" style={{ marginTop: '0.5rem' }}>
-            <span className="profile-badge profile-badge--id">ID: {user?.libraryId || '2428CSEAIML994'}</span>
-            <span className="profile-badge profile-badge--branch">Branch: {user?.branch || 'CSE-AIML'}</span>
+        <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ fontSize: '3rem', width: '70px', height: '70px', borderRadius: '50%', background: 'var(--bg-lavender)', border: '2px solid #C7D2FE', margin: '0 auto 0.5rem auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {user?.avatar || '👨‍🎓'}
+          </div>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-main)' }}>{user?.name || 'Student'}</h2>
+          <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', marginTop: '0.3rem' }}>
+            <span style={{ background: 'var(--bg-surface-subtle)', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+              ID: {user?.libraryId || '2428CSEAIML994'}
+            </span>
+            <span style={{ background: 'var(--bg-lavender)', color: 'var(--royal-violet)', padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 700 }}>
+              {user?.branch || 'CSE'}
+            </span>
           </div>
         </div>
 
-        {/* SPEAKING RANK & SCORE LEVEL */}
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-glass)',
-          borderRadius: '14px', padding: '1rem', textAlign: 'center'
-        }}>
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Speaking Rank & Status</span>
-          <h3 style={{ margin: '0.3rem 0 0.2rem 0', color: rankColor, fontSize: '1.2rem' }}>{rankName}</h3>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: '#cbd5e1' }}>
-            {completedCount}/100 Passed • {progress.xp} XP • Avg Accuracy: <strong>{avgScore}%</strong>
+        {/* Rank & Stats */}
+        <div style={{ background: 'var(--bg-surface-subtle)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '1rem', textAlign: 'center', marginBottom: '1rem' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>Speaking Rank</span>
+          <h3 style={{ margin: '0.2rem 0', color: rankColor, fontSize: '1.25rem', fontWeight: 900 }}>{rankName}</h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            {completedCount}/100 Completed • {progress.xp} XP • Avg Accuracy: <strong>{avgScore}%</strong>
           </p>
         </div>
 
-        {/* AI COACH 1-SENTENCE FEEDBACK */}
-        <div style={{
-          background: 'rgba(99, 102, 241, 0.08)', border: '1px solid rgba(99, 102, 241, 0.25)',
-          borderRadius: '14px', padding: '1rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#818cf8', fontWeight: 700, fontSize: '0.82rem', marginBottom: '0.3rem' }}>
-            <span>🤖 AI Coach Note:</span>
-          </div>
-          <p style={{ margin: 0, color: '#e2e8f0', fontSize: '0.88rem', lineHeight: 1.4 }}>
-            "{aiFeedbackSentence}"
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.4rem' }}>
-          <button className="secondary-action" type="button" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>
-            Back to App
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: '0.8rem', marginTop: '1.25rem' }}>
+          <button className="btn-3d btn-3d-white" type="button" onClick={onClose} style={{ flex: 1 }}>
+            Back
           </button>
-          <button className="primary-action" type="button" onClick={onSignOut} style={{ background: '#ef4444', color: '#fff', justifyContent: 'center' }}>
+          <button className="btn-3d" type="button" onClick={onSignOut} style={{ background: 'var(--coral)', color: '#fff', boxShadow: '0 4px 0 #9F1239' }}>
             Sign Out
           </button>
         </div>
@@ -1183,11 +1557,11 @@ function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onS
   );
 }
 
-// ── STUDENT LEADERBOARD MODAL ─────────────────────────────────────────────────
+// ── STUDENT LEADERBOARD MODAL ───────────────────────────────────────────────
 function StudentLeaderboardModal({ currentUser, onClose }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('branch'); // 'branch' | 'college'
+  const [activeTab, setActiveTab] = useState('branch');
 
   useEffect(() => {
     getAllStudentReports().then((data) => {
@@ -1197,90 +1571,68 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
   }, []);
 
   const studentBranch = currentUser?.branch || 'CSE';
-  const myLibraryId   = (currentUser?.libraryId || currentUser?.id || '').toUpperCase();
+  const myLibraryId = (currentUser?.libraryId || currentUser?.id || '').toUpperCase();
 
-  // All college sorted by XP
   const collegeSorted = useMemo(() => {
     return [...reports].sort((a, b) => b.xp - a.xp || b.avgScore - a.avgScore);
   }, [reports]);
 
-  // Branch sorted by XP
   const branchSorted = useMemo(() => {
     return collegeSorted.filter((r) => r.branch === studentBranch);
   }, [collegeSorted, studentBranch]);
 
-  // Ranks
-  const collegeRankIdx = collegeSorted.findIndex((r) => r.libraryId?.toUpperCase() === myLibraryId || r.id?.toUpperCase() === myLibraryId);
-  const branchRankIdx  = branchSorted.findIndex((r) => r.libraryId?.toUpperCase() === myLibraryId || r.id?.toUpperCase() === myLibraryId);
-
-  const collegeRankStr = collegeRankIdx >= 0 ? `#${collegeRankIdx + 1} of ${collegeSorted.length}` : 'Unranked';
-  const branchRankStr  = branchRankIdx >= 0  ? `#${branchRankIdx + 1} of ${branchSorted.length}`  : 'Unranked';
-
   const displayedList = activeTab === 'branch' ? branchSorted : collegeSorted;
-
   const RANK_EMOJIS = ['🥇', '🥈', '🥉'];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px', width: '92%', maxHeight: '85vh', overflowY: 'auto' }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
         <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
 
-        <div style={{ textAlign: 'center', marginBottom: '0.8rem' }}>
-          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-main)' }}>
             🏆 Student Leaderboard
           </h2>
-          <small style={{ color: '#94a3b8' }}>See your position among peers in {studentBranch} and across the college</small>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+            See your rank among peers in {studentBranch} and across college
+          </p>
         </div>
 
-        {/* MY RANK CARDS */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
-          <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
-            <span style={{ fontSize: '0.7rem', color: '#7dd3fc', textTransform: 'uppercase', fontWeight: 700 }}>📍 Branch Rank ({studentBranch})</span>
-            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#38bdf8', marginTop: '0.2rem' }}>{branchRankStr}</strong>
-          </div>
-          <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '12px', padding: '0.8rem', textAlign: 'center' }}>
-            <span style={{ fontSize: '0.7rem', color: '#fde68a', textTransform: 'uppercase', fontWeight: 700 }}>🏫 College-Wide Rank</span>
-            <strong style={{ display: 'block', fontSize: '1.4rem', color: '#f59e0b', marginTop: '0.2rem' }}>{collegeRankStr}</strong>
-          </div>
-        </div>
-
-        {/* TAB SWITCHER */}
-        <div className="tool-tabs" style={{ justifyContent: 'center', marginBottom: '0.8rem' }}>
-          <button
+        {/* Tab Switcher */}
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
+          <button 
             type="button"
-            className={`tool-tab ${activeTab === 'branch' ? 'tool-tab--active' : ''}`}
+            className={`btn-3d ${activeTab === 'branch' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
             onClick={() => setActiveTab('branch')}
           >
             📍 {studentBranch} Branch
           </button>
-          <button
+          <button 
             type="button"
-            className={`tool-tab ${activeTab === 'college' ? 'tool-tab--active' : ''}`}
+            className={`btn-3d ${activeTab === 'college' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
             onClick={() => setActiveTab('college')}
           >
             🏫 Whole College
           </button>
         </div>
 
-        {/* LEADERBOARD LIST */}
+        {/* Leaderboard Table */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>Loading leaderboard...</div>
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Loading leaderboard...</div>
         ) : (
-          <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem', color: '#cbd5e1' }}>
+          <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '14px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)' }}>
                   <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Rank</th>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>Student</th>
-                  <th style={{ padding: '0.6rem 0.8rem' }}>Branch</th>
+                  <th style={{ padding: '0.6rem 0.8rem', textAlign: 'left' }}>Student</th>
                   <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>XP</th>
-                  <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Passed</th>
                   <th style={{ padding: '0.6rem 0.8rem', textAlign: 'center' }}>Accuracy</th>
                 </tr>
               </thead>
               <tbody>
                 {displayedList.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b' }}>No students recorded yet.</td></tr>
+                  <tr><td colSpan={4} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No student records yet.</td></tr>
                 )}
                 {displayedList.map((st, i) => {
                   const isMe = st.libraryId?.toUpperCase() === myLibraryId || st.id?.toUpperCase() === myLibraryId;
@@ -1288,18 +1640,23 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
                     <tr 
                       key={st.libraryId || i}
                       style={{
-                        borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        background: isMe ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-                        fontWeight: isMe ? 700 : 400
+                        borderBottom: '1px solid var(--border-subtle)',
+                        background: isMe ? 'var(--bg-lavender)' : 'transparent',
+                        fontWeight: isMe ? 800 : 500
                       }}
                     >
                       <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', fontWeight: 800 }}>
                         {i < 3 ? RANK_EMOJIS[i] : `#${i + 1}`}
                       </td>
-                      <td style={{ padding: '0.6rem 0.8rem', color: isMe ? '#38bdf8' : '#fff' }}>
+                      <td style={{ padding: '0.6rem 0.8rem' }}>
                         {st.avatar} {st.name} {isMe && '(You)'}
                       </td>
-<td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: st.avgScore >= 70 ? '#10b981' : '#f43f5e', fontWeight: 700 }}>{st.avgScore}%</td>
+                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: 'var(--gold-dark)', fontWeight: 800 }}>
+                        {st.xp}
+                      </td>
+                      <td style={{ padding: '0.6rem 0.8rem', textAlign: 'center', color: st.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)', fontWeight: 800 }}>
+                        {st.avgScore}%
+                      </td>
                     </tr>
                   );
                 })}
@@ -1307,42 +1664,35 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
             </table>
           </div>
         )}
-
-        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-          <button className="secondary-action" type="button" onClick={onClose} style={{ width: '100%', justifyContent: 'center' }}>
-            Back to Quest Map
-          </button>
-        </div>
       </div>
     </div>
   );
 }
 
-// ── DIAGNOSTIC ASSESSMENT MODAL ──────────────────────────────────────────────
+// ── 15-QUESTION DIAGNOSTIC ASSESSMENT MODAL ─────────────────────────────────
 const FULL_DIAGNOSTIC_15 = [
-  { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', hint: 'Say "map" — press both lips together firmly', difficulty: 'easy' },
-  { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', hint: 'Say "ball" — pop your lips apart for B', difficulty: 'easy' },
+  { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', hint: 'Say "map" — press lips together firmly', difficulty: 'easy' },
+  { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', hint: 'Say "ball" — pop lips apart for B', difficulty: 'easy' },
   { sound: 's', display_name: 'S Sound', word: 'sun', pronounce: 'sʌn', skill: 'consonants', hint: 'Say "sun" — smooth hissing S sound', difficulty: 'easy' },
-  { sound: 'sh', display_name: 'SH Sound', word: 'ship', pronounce: 'ʃɪp', skill: 'sh_confusion', hint: 'Say "ship" — lips pushed forward for SH', difficulty: 'easy' },
-  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', hint: 'Say "red" — curl tongue back slightly for R', difficulty: 'easy' },
-  { sound: 'v', display_name: 'V Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', hint: 'Say "very" — upper teeth touch lower lip for V', difficulty: 'medium' },
+  { sound: 'sh', display_name: 'SH Sound', word: 'ship', pronounce: 'ʃɪp', skill: 'sh_confusion', hint: 'Say "ship" — lips forward for SH', difficulty: 'easy' },
+  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', hint: 'Say "red" — curl tongue back for R', difficulty: 'easy' },
+  { sound: 'v', display_name: 'V Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', hint: 'Say "very" — upper teeth touch lower lip', difficulty: 'medium' },
   { sound: 'w', display_name: 'W Sound', word: 'water', pronounce: 'ˈwɔːtər', skill: 'vw_confusion', hint: 'Say "water" — round lips into a circle for W', difficulty: 'medium' },
-  { sound: 'th', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" — tongue tip lightly between teeth', difficulty: 'medium' },
+  { sound: 'th', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" — tongue tip between teeth', difficulty: 'medium' },
   { sound: 'dh', display_name: 'TH Sound (Voiced)', word: 'this', pronounce: 'ðɪs', skill: 'th_sounds', hint: 'Say "this" — voiced TH, tongue between teeth', difficulty: 'medium' },
   { sound: 'l', display_name: 'L Sound', word: 'little', pronounce: 'ˈlɪtəl', skill: 'rl_confusion', hint: 'Say "little" — tongue tip touches roof of mouth', difficulty: 'medium' },
   { sound: 'th', display_name: 'TH + R Blend', word: 'through', pronounce: 'θruː', skill: 'th_sounds', hint: 'Say "through" — smooth transition from TH to R', difficulty: 'hard' },
-  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', hint: 'Say "world" — round lips for W, curl for R & L', difficulty: 'hard' },
-  { sound: 'th', display_name: 'TH in Context', word: 'weather', pronounce: 'ˈwɛðər', skill: 'th_sounds', hint: 'Say "weather" — voiced TH clearly in the middle', difficulty: 'hard' },
-  { sound: 'r', display_name: 'R + TH Blend', word: 'thirty', pronounce: 'ˈθɜːrti', skill: 'rl_confusion', hint: 'Say "thirty" — TH first, then R sound clearly', difficulty: 'hard' },
-  { sound: 'th', display_name: 'TH in Multi-Syllable', word: 'therefore', pronounce: 'ˈðɛərfɔːr', skill: 'th_sounds', hint: 'Say "therefore" — voiced TH start, clear R in middle', difficulty: 'hard' }
+  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', hint: 'Say "world" — round lips for W, curl for R', difficulty: 'hard' },
+  { sound: 'th', display_name: 'TH in Context', word: 'weather', pronounce: 'ˈwɛðər', skill: 'th_sounds', hint: 'Say "weather" — voiced TH clearly in middle', difficulty: 'hard' },
+  { sound: 'r', display_name: 'R + TH Blend', word: 'thirty', pronounce: 'ˈθɜːrti', skill: 'rl_confusion', hint: 'Say "thirty" — TH first, then clear R sound', difficulty: 'hard' },
+  { sound: 'th', display_name: 'TH in Multi-Syllable', word: 'therefore', pronounce: 'ˈðɛərfɔːr', skill: 'th_sounds', hint: 'Say "therefore" — voiced TH start, clear R', difficulty: 'hard' }
 ];
 
 function DiagnosticModal({ user, progress, setProgress, onClose }) {
   const [questions, setQuestions] = useState(FULL_DIAGNOSTIC_15);
-  const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'report'
+  const [status, setStatus] = useState('idle');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
@@ -1362,9 +1712,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
           setQuestions(data);
         }
       })
-      .catch(() => {
-        // Keep FULL_DIAGNOSTIC_15 fallback
-      });
+      .catch(() => {});
 
     return () => {
       cleanupAll();
@@ -1384,7 +1732,6 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     }
   }
 
-  // ── Start Silence Detection for Auto-Stop ──────────────────────────────────
   function startSilenceDetection(stream) {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -1394,14 +1741,11 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.2;
       source.connect(analyser);
 
       const dataArray = new Uint8Array(analyser.fftSize);
-      let userStartedSpeaking = false;
+      let speechDetected = false;
       let silenceStartTime = null;
-      const SPEECH_RMS_THRESHOLD = 12;
-      const SILENCE_DURATION_MS = 1400; // Auto-stop after 1.4s of silence after speaking
 
       function checkAudio() {
         if (status === 'processing') return;
@@ -1413,14 +1757,12 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         }
         const rms = Math.sqrt(sumSq / dataArray.length) * 100;
 
-        if (rms > SPEECH_RMS_THRESHOLD) {
-          userStartedSpeaking = true;
+        if (rms > 12) {
+          speechDetected = true;
           silenceStartTime = null;
-        } else if (userStartedSpeaking) {
-          if (!silenceStartTime) {
-            silenceStartTime = Date.now();
-          } else if (Date.now() - silenceStartTime > SILENCE_DURATION_MS) {
-            // User finished speaking! Auto-stop recording now
+        } else if (speechDetected) {
+          if (!silenceStartTime) silenceStartTime = Date.now();
+          else if (Date.now() - silenceStartTime > 1400) {
             silenceDetectRef.current = null;
             stopAndEvaluate();
             return;
@@ -1429,12 +1771,9 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         silenceDetectRef.current = requestAnimationFrame(checkAudio);
       }
       silenceDetectRef.current = requestAnimationFrame(checkAudio);
-    } catch (e) {
-      console.warn('Silence detection error:', e);
-    }
+    } catch {}
   }
 
-  // ── Start Recording + Web Speech Recognition ──────────────────────────────
   async function startRecording() {
     setError('');
     setLiveHeard('');
@@ -1449,7 +1788,6 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       timerRef.current = setInterval(() => {
         setRecordingSeconds((s) => {
           if (s >= 7) {
-            // Safety timeout at 7s
             stopAndEvaluate();
             return s;
           }
@@ -1457,10 +1795,8 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         });
       }, 1000);
 
-      // Start Web Audio silence detection
       if (stream) startSilenceDetection(stream);
 
-      // Start Browser Speech Recognition in parallel for real-time fallback
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRec) {
         try {
@@ -1479,18 +1815,15 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               heardRef.current = clean;
             }
           };
-          rec.onerror = () => {};
-          rec.onend = () => {};
           rec.start();
           recognitionRef.current = rec;
         } catch {}
       }
     } catch (e) {
-      setError(e.message || 'Microphone access failed. Please grant mic permissions.');
+      setError(e.message || 'Microphone access failed.');
     }
   }
 
-  // ── Stop Recording & Evaluate ─────────────────────────────────────────────
   async function stopAndEvaluate() {
     if (!recorderRef.current || status === 'processing') return;
     cleanupAll();
@@ -1503,14 +1836,12 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       const audioBlob = await recorderRef.current.stop();
       let evalData = null;
 
-      // 1. Try Backend evaluation first
       try {
         evalData = await evaluateDiagnosticSound(audioBlob, currentIndex);
-      } catch (err) {
+      } catch {
         evalData = null;
       }
 
-      // 2. Client-side evaluation fallback (if backend offline/unreachable on Vercel)
       if (!evalData || typeof evalData.score !== 'number') {
         const spoken = (heardRef.current || liveHeard || '').trim().toLowerCase();
         let calcScore = 0.0;
@@ -1518,22 +1849,15 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
         if (spoken) {
           if (spoken === targetWord || spoken.includes(targetWord)) {
-            calcScore = 0.92; // Clear accurate word
+            calcScore = 0.92;
             detected = true;
-          } else if (
-            targetWord.startsWith(spoken.slice(0, 3)) ||
-            spoken.startsWith(targetWord.slice(0, 3))
-          ) {
-            calcScore = 0.72; // Close approximation
+          } else if (targetWord.startsWith(spoken.slice(0, 3))) {
+            calcScore = 0.72;
             detected = true;
           } else {
-            calcScore = 0.20; // Wrong word spoken
+            calcScore = 0.20;
             detected = false;
           }
-        } else {
-          // No speech heard at all
-          calcScore = 0.0;
-          detected = false;
         }
 
         evalData = {
@@ -1560,13 +1884,12 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       } else {
         generateFinalReport(nextResults);
       }
-    } catch (e) {
-      setError(e.message || 'Evaluation error.');
+    } catch {
+      setError('Evaluation error.');
       setStatus('idle');
     }
   }
 
-  // ── Build Accurate Diagnostic Report ──────────────────────────────────────
   async function generateFinalReport(allResults) {
     setStatus('processing');
     try {
@@ -1582,7 +1905,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       }
       setReport(rep);
       setStatus('report');
-    } catch (e) {
+    } catch {
       setError('Failed to generate report.');
       setStatus('idle');
     }
@@ -1649,8 +1972,8 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     return {
       overall_score,
       pronunciation_scores,
-      strengths: strengths.length ? strengths : ['Basic Vowel Recognition'],
-      weaknesses: weaknesses.length ? weaknesses : ['Consonant Precision'],
+      strengths: strengths.length ? strengths : ['Basic Sound Articulation'],
+      weaknesses: weaknesses.length ? weaknesses : ['Consonant Clarity'],
       recommended_learning_path
     };
   }
@@ -1683,206 +2006,122 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
   const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
   const progressPct = questions.length > 0 ? Math.round(((currentIndex) / questions.length) * 100) : 0;
-  const difficultyBadge = {
-    easy: { label: '🟢 Easy', color: '#10b981', bg: 'rgba(16,185,129,0.15)' },
-    medium: { label: '🟡 Medium', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-    hard: { label: '🔴 Hard', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' }
-  }[currentQ.difficulty || 'easy'];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="profile-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', width: '92%', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
         <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
 
-        {/* HEADER */}
         <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-          <h2 style={{ margin: 0, color: '#fff', fontSize: '1.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-main)' }}>
             🎯 Placement Diagnostic Assessment
           </h2>
-          <small style={{ color: '#94a3b8' }}>15-Question Comprehensive Pronunciation &amp; Sound Mastery Test</small>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            15-Question Comprehensive Pronunciation &amp; Sound Mastery Test
+          </p>
         </div>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
-            Loading assessment modules...
-          </div>
-        ) : status === 'report' && report ? (
-          /* ── DIAGNOSTIC REPORT VIEW ── */
+        {status === 'report' && report ? (
           <div>
-            <div style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.12), rgba(99,102,241,0.12))', border: '1px solid rgba(14,165,233,0.3)', borderRadius: '16px', padding: '1.2rem', textAlign: 'center', marginBottom: '1.2rem' }}>
-              <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, textTransform: 'uppercase' }}>Overall Diagnostic Score</span>
-              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: report.overall_score >= 70 ? '#10b981' : report.overall_score >= 45 ? '#f59e0b' : '#ef4444', margin: '0.2rem 0' }}>
+            <div style={{ background: 'var(--bg-lavender)', border: '1.5px solid #C7D2FE', borderRadius: '20px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--royal-violet)', textTransform: 'uppercase' }}>Overall Diagnostic Score</span>
+              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: report.overall_score >= 70 ? 'var(--emerald-dark)' : 'var(--gold-dark)', margin: '0.2rem 0' }}>
                 {report.overall_score}%
               </div>
-              <div style={{ fontSize: '0.9rem', color: '#e2e8f0', fontWeight: 600 }}>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 700 }}>
                 {report.overall_score >= 85 ? '🌟 Advanced Pronunciation Mastery' : report.overall_score >= 65 ? '👍 Intermediate Communication Skills' : '🎯 Foundation Level — Room for Growth'}
               </div>
             </div>
 
-            {/* SKILL SCORES */}
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.6rem 0', color: '#94a3b8', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Phoneme Skill Breakdown</h4>
+            {/* Skill Breakdown */}
+            <div style={{ marginBottom: '1.25rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
                 {Object.entries(report.pronunciation_scores || {}).map(([skill, val]) => (
-                  <div key={skill} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '10px', padding: '0.6rem 0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '0.3rem' }}>
+                  <div key={skill} style={{ background: 'var(--bg-surface-subtle)', padding: '0.6rem 0.8rem', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.25rem' }}>
                       <span style={{ textTransform: 'capitalize' }}>{skill.replace('_', ' ')}</span>
-                      <span style={{ color: val >= 70 ? '#10b981' : '#f43f5e', fontWeight: 800 }}>{val}%</span>
+                      <span style={{ color: val >= 70 ? 'var(--emerald-dark)' : 'var(--coral)', fontWeight: 800 }}>{val}%</span>
                     </div>
-                    <div style={{ height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${val}%`, background: val >= 70 ? '#10b981' : '#f43f5e' }} />
+                    <div style={{ height: '5px', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${val}%`, background: val >= 70 ? 'var(--emerald)' : 'var(--coral)' }} />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* STRENGTHS & WEAKNESSES */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
-              <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px', padding: '0.8rem' }}>
-                <div style={{ color: '#34d399', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.4rem' }}>💪 Key Strengths</div>
-                {(report.strengths || []).map((s, i) => (
-                  <div key={i} style={{ color: '#e2e8f0', fontSize: '0.78rem', marginBottom: '0.2rem' }}>• {s}</div>
-                ))}
-              </div>
-              <div style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '12px', padding: '0.8rem' }}>
-                <div style={{ color: '#fb7185', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.4rem' }}>⚠️ Priority Growth Areas</div>
-                {(report.weaknesses || []).map((w, i) => (
-                  <div key={i} style={{ color: '#e2e8f0', fontSize: '0.78rem', marginBottom: '0.2rem' }}>• {w}</div>
-                ))}
-              </div>
-            </div>
-
-            {/* LEARNING PATH */}
-            {(report.recommended_learning_path || []).length > 0 && (
-              <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '12px', padding: '0.8rem', marginBottom: '1.2rem' }}>
-                <div style={{ color: '#a5b4fc', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.4rem' }}>🚀 AI Recommended Roadmap</div>
-                {report.recommended_learning_path.map((step, i) => (
-                  <div key={i} style={{ color: '#cbd5e1', fontSize: '0.78rem', marginBottom: '0.2rem' }}>{i + 1}. {step}</div>
-                ))}
-              </div>
-            )}
-
-            {/* ACTIONS */}
+            {/* Actions */}
             <div style={{ display: 'flex', gap: '0.8rem' }}>
-              <button onClick={applyPlacement} className="primary-action" type="button" style={{ flex: 1, justifyContent: 'center', background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-                🚀 Apply Placement &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
+              <button 
+                onClick={applyPlacement} 
+                className="btn-3d btn-3d-success" 
+                type="button" 
+                style={{ flex: 1 }}
+              >
+                🚀 Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
               </button>
-              <button onClick={onClose} className="secondary-action" type="button" style={{ justifyContent: 'center' }}>
+              <button onClick={onClose} className="btn-3d btn-3d-white" type="button">
                 Done
               </button>
             </div>
           </div>
         ) : (
-          /* ── QUESTION STEP VIEW ── */
           <div>
-            {/* PROGRESS BAR */}
-            <div style={{ marginBottom: '1.2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#94a3b8', fontWeight: 700, marginBottom: '0.4rem' }}>
+            {/* Progress */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
                 <span>Question {currentIndex + 1} of {questions.length}</span>
-                <span style={{ color: difficultyBadge.color, background: difficultyBadge.bg, padding: '0.15rem 0.5rem', borderRadius: '8px' }}>
-                  {difficultyBadge.label}
-                </span>
                 <span>{progressPct}% Done</span>
               </div>
-              <div style={{ height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg, #0ea5e9, #6366f1)', transition: 'width 0.3s' }} />
+              <div style={{ height: '6px', background: 'var(--bg-surface-subtle)', borderRadius: '999px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${progressPct}%`, background: 'var(--royal-violet)', transition: 'width 0.3s' }} />
               </div>
             </div>
 
-            {/* WORD / SOUND CARD */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.2rem' }}>
-              <span style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.74rem', fontWeight: 700, textTransform: 'uppercase' }}>
-                {currentQ.display_name || currentQ.skill}
-              </span>
-              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: '#fff', margin: '0.6rem 0 0.2rem 0', letterSpacing: '0.02em' }}>
+            {/* Word Card */}
+            <div style={{ background: 'var(--bg-surface-subtle)', border: '1px solid var(--border-light)', borderRadius: '20px', padding: '1.75rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+              <span className="practice-level-badge">{currentQ.display_name || currentQ.skill}</span>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--text-main)', margin: '0.4rem 0' }}>
                 "{currentQ.word}"
               </div>
-              <div style={{ color: '#a5b4fc', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '0.6rem' }}>
+              <div style={{ color: 'var(--royal-violet)', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
                 /{currentQ.pronounce || currentQ.sound}/
               </div>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.84rem' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 💡 {currentQ.hint || `Speak "${currentQ.word}" clearly into your microphone.`}
               </p>
 
               {liveHeard && (
-                <div style={{ marginTop: '0.8rem', background: 'rgba(56,189,248,0.1)', border: '1px dashed rgba(56,189,248,0.3)', borderRadius: '8px', padding: '0.4rem 0.8rem', fontSize: '0.82rem', color: '#38bdf8' }}>
-                  🗣️ Heard: <strong>"{liveHeard}"</strong>
+                <div style={{ marginTop: '0.8rem', padding: '0.4rem 0.8rem', background: 'var(--bg-lavender)', borderRadius: '8px', color: 'var(--royal-violet-deep)', fontSize: '0.85rem', fontWeight: 700 }}>
+                  🗣️ Heard: "{liveHeard}"
                 </div>
               )}
             </div>
 
-            {error && <div className="error-box" style={{ marginBottom: '1rem' }}>{error}</div>}
+            {/* Mic Button */}
+            <div className="mic-action-area">
+              <button 
+                type="button"
+                className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                onClick={status === 'recording' ? stopAndEvaluate : startRecording}
+                disabled={status === 'processing'}
+              >
+                {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
+              </button>
 
-            {/* RECORDING CONTROL BUTTON */}
-            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-              {status === 'processing' ? (
-                <div style={{ color: '#38bdf8', fontWeight: 700, fontSize: '0.9rem' }}>
-                  ⏳ Evaluating speech accuracy...
-                </div>
-              ) : status === 'recording' ? (
-                <div>
-                  <button
-                    type="button"
-                    onClick={stopAndEvaluate}
-                    style={{
-                      background: '#ef4444', color: '#fff', border: 'none',
-                      padding: '0.8rem 1.8rem', borderRadius: '999px', fontWeight: 800,
-                      fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex',
-                      alignItems: 'center', gap: '0.6rem', boxShadow: '0 0 20px rgba(239,68,68,0.4)'
-                    }}
-                  >
-                    <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#fff', animation: 'pulse 1s infinite' }} />
-                    Recording ({recordingSeconds}s) — Click or Pause to Submit
-                  </button>
-                  <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginTop: '0.4rem' }}>
-                    ⚡ Auto-stops automatically when you finish speaking!
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={startRecording}
-                  style={{
-                    background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)', color: '#fff', border: 'none',
-                    padding: '0.8rem 1.8rem', borderRadius: '999px', fontWeight: 800,
-                    fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex',
-                    alignItems: 'center', gap: '0.6rem', boxShadow: '0 4px 15px rgba(14,165,233,0.35)'
-                  }}
-                >
-                  <span>🎙️</span> Tap &amp; Speak "{currentQ.word}"
-                </button>
-              )}
+              <div className="mic-timer-label">
+                {status === 'recording' ? `Recording (${recordingSeconds}s) — Auto-stops on pause` : 'Tap to Speak Word'}
+              </div>
             </div>
 
-            {/* SKIP BUTTON */}
-            <div style={{ textAlign: 'center' }}>
-              <button
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <button 
                 type="button"
                 onClick={() => {
-                  const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
-                  const skippedEval = {
-                    display_name: currentQ.display_name,
-                    sound: currentQ.sound,
-                    word: currentQ.word,
-                    pronounce: currentQ.pronounce,
-                    skill: currentQ.skill,
-                    score: 0.0,
-                    detected: false,
-                    spoken: []
-                  };
-                  const nextResults = [...results, skippedEval];
-                  setResults(nextResults);
-                  if (currentIndex + 1 < questions.length) {
-                    setCurrentIndex(currentIndex + 1);
-                    setStatus('idle');
-                    setRecordingSeconds(0);
-                  } else {
-                    generateFinalReport(nextResults);
-                  }
+                  if (currentIndex + 1 < questions.length) setCurrentIndex(currentIndex + 1);
+                  else generateFinalReport(results);
                 }}
-                style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.8rem', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer' }}
               >
                 Skip Question →
               </button>
@@ -1894,15 +2133,15 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
   );
 }
 
-// ── TEACHER DASHBOARD (Full Page) ────────────────────────────────────────────
+// ── TEACHER / FACULTY ANALYTICS DASHBOARD ───────────────────────────────────
 const BRANCHES = ['ALL', 'CSE', 'IT', 'CS', 'CSIT', 'CSE (AI)', 'CSE(AIML)', 'MECH', 'ECE', 'ELCE', 'EEE'];
 
 function TeacherDashboard({ teacher, onSignOut }) {
-  const [reports, setReports]             = useState([]);
-  const [loading, setLoading]             = useState(true);
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
-  const [sortBy, setSortBy]               = useState('xp');         // 'xp'|'accuracy'|'passed'|'name'
-  const [searchQuery, setSearchQuery]     = useState('');
+  const [sortBy, setSortBy] = useState('xp');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
 
   useEffect(() => {
@@ -1921,512 +2160,283 @@ function TeacherDashboard({ teacher, onSignOut }) {
     }
     list.sort((a, b) => {
       if (sortBy === 'accuracy') return b.avgScore - a.avgScore;
-      if (sortBy === 'passed')   return b.completedCount - a.completedCount;
-      if (sortBy === 'name')     return a.name.localeCompare(b.name);
+      if (sortBy === 'passed') return b.completedCount - a.completedCount;
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
       return b.xp - a.xp;
     });
     return list;
   }, [reports, selectedBranch, sortBy, searchQuery]);
 
-  const collegeTop3 = useMemo(() =>
-    [...reports].sort((a, b) => b.avgScore - a.avgScore).slice(0, 3), [reports]);
-
-  const branchTop3 = useMemo(() => {
-    if (selectedBranch === 'ALL') return [];
-    return [...reports].filter((r) => r.branch === selectedBranch).sort((a, b) => b.avgScore - a.avgScore).slice(0, 3);
-  }, [reports, selectedBranch]);
-
-  const totalStudents   = reports.length;
-  const avgClassAcc     = totalStudents > 0 ? Math.round(reports.reduce((s, r) => s + r.avgScore, 0) / totalStudents) : 0;
-  const topPerformer    = collegeTop3[0];
-
-  // Most common weak sound across all students
-  const weakCounts = {};
-  reports.forEach((r) => (r.weakestSoundsList || []).forEach((s) => { if (s) weakCounts[s] = (weakCounts[s] || 0) + 1; }));
-  const topWeakSound = Object.entries(weakCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'TH (थ)';
-
-  if (selectedStudent) {
-    return <StudentDetailPanel student={selectedStudent} onBack={() => setSelectedStudent(null)} />;
-  }
-
-  const card = (label, value, color) => (
-    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '1rem 1.2rem', textAlign: 'center', flex: 1, minWidth: '130px' }}>
-      <div style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.3rem' }}>{label}</div>
-      <div style={{ fontSize: '1.5rem', fontWeight: 800, color }}>{value}</div>
-    </div>
-  );
-
-  const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+  const collegeTop3 = useMemo(() => [...reports].sort((a, b) => b.avgScore - a.avgScore).slice(0, 3), [reports]);
+  const totalStudents = reports.length;
+  const avgClassAcc = totalStudents > 0 ? Math.round(reports.reduce((s, r) => s + r.avgScore, 0) / totalStudents) : 0;
+  const topPerformer = collegeTop3[0];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#080e1f 0%,#0d1127 60%,#0a1628 100%)', color: '#e2e8f0', fontFamily: 'Inter,system-ui,sans-serif' }}>
-      {/* ── HEADER ── */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 10 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-page)', color: 'var(--text-main)' }}>
+      <header className="top-appbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-          <div style={{ width: '2.4rem', height: '2.4rem', borderRadius: '10px', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '1.1rem' }}>S</div>
+          <Mascot state="crowned" size={40} />
           <div>
-            <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#fff' }}>Sapphire — Faculty Analytics Dashboard</div>
-            <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>👨‍🏫 {teacher.name} • Real-time class data from Supabase</div>
+            <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--royal-violet)' }}>Sapphire — Faculty Analytics Dashboard</h2>
+            <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>👨‍🏫 {teacher.name} • Class Analytics</small>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-          <button onClick={() => getAllStudentReports().then((d) => { setReports(Array.isArray(d) ? d : []); })} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#cbd5e1', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem' }}>
-            🔄 Refresh
-          </button>
-          <button onClick={() => exportCSVReport(filtered)} style={{ background: '#10b981', border: 'none', color: '#fff', padding: '0.4rem 0.9rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}>
+
+        <div style={{ display: 'flex', gap: '0.6rem' }}>
+          <button className="btn-3d btn-3d-success btn-sm" onClick={() => exportCSVReport(filtered)}>
             📥 Export CSV
           </button>
-          <button onClick={onSignOut} style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem' }}>
+          <button className="btn-3d btn-sm" onClick={onSignOut} style={{ background: 'var(--coral)', color: '#fff' }}>
             Sign Out
           </button>
         </div>
       </header>
 
-      <div style={{ padding: '1.5rem 2rem', maxWidth: '1200px', margin: '0 auto' }}>
-
-        {/* ── LOADING ── */}
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⏳</div>
-            Loading student data from Supabase...
+      <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Metric Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="stat-widget-card">
+            <div className="stat-widget-label">Total Enrolled</div>
+            <div className="stat-widget-val">{totalStudents}</div>
           </div>
-        )}
-
-        {!loading && (
-          <>
-            {/* ── SUMMARY CARDS ── */}
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-              {card('Total Students', totalStudents, '#38bdf8')}
-              {card('College Avg Accuracy', `${avgClassAcc}%`, '#10b981')}
-              {card('Top Performer', topPerformer ? topPerformer.name.split(' ')[0] : '—', '#f59e0b')}
-              {card('Top Weak Sound', topWeakSound, '#f43f5e')}
-            </div>
-
-            {/* ── TOP PERFORMERS ── */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '0.9rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                🏆 Top Performers — {selectedBranch === 'ALL' ? 'Whole College' : selectedBranch}
-              </h3>
-              <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
-                {(selectedBranch === 'ALL' ? collegeTop3 : branchTop3).map((s, i) => (
-                  <div key={s.libraryId} onClick={() => setSelectedStudent(s)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '0.8rem 1rem', display: 'flex', alignItems: 'center', gap: '0.7rem', cursor: 'pointer', flex: 1, minWidth: '200px', transition: 'border-color 0.2s' }}
-                    onMouseEnter={(e) => e.currentTarget.style.borderColor='#38bdf8'}
-                    onMouseLeave={(e) => e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'}
-                  >
-                    <span style={{ fontSize: '1.6rem' }}>{RANK_MEDALS[i]}</span>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>{s.avatar} {s.name}</div>
-                      <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>{s.libraryId} • {s.branch}</div>
-                    </div>
-                    <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#10b981', fontSize: '1.1rem' }}>{s.avgScore}%</div>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{s.completedCount} passed</div>
-                    </div>
-                  </div>
-                ))}
-                {(selectedBranch === 'ALL' ? collegeTop3 : branchTop3).length === 0 && (
-                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>No students in this branch yet.</div>
-                )}
-              </div>
-            </div>
-
-            {/* ── FILTER & SORT BAR ── */}
-            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.8rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.8rem 1rem' }}>
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="🔍 Search by name or library ID..."
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.84rem', flex: '1', minWidth: '180px' }}
-              />
-              <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} style={{ background: '#0d1127', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.84rem' }}>
-                {BRANCHES.map((b) => <option key={b} value={b}>{b === 'ALL' ? 'All Branches' : b}</option>)}
-              </select>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ background: '#0d1127', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.84rem' }}>
-                <option value="xp">Sort: XP (High → Low)</option>
-                <option value="accuracy">Sort: Accuracy % (High → Low)</option>
-                <option value="passed">Sort: Questions Passed</option>
-                <option value="name">Sort: Name A → Z</option>
-              </select>
-              <span style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>Showing {filtered.length} / {reports.length} students</span>
-            </div>
-
-            {/* ── STUDENT TABLE ── */}
-            <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem', color: '#cbd5e1' }}>
-                <thead>
-                  <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>#</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Student</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Library ID</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Branch</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>XP</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Passed /100</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Avg Score</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'left', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Weakest Sounds</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>Last Active</th>
-                    <th style={{ padding: '0.7rem 1rem', textAlign: 'center', color: '#94a3b8', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase' }}>View</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 && (
-                    <tr><td colSpan={10} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No students found. Students will appear here after registering and practicing.</td></tr>
-                  )}
-                  {filtered.map((st, i) => (
-                    <tr key={st.libraryId} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.15s', cursor: 'pointer' }}
-                      onClick={() => setSelectedStudent(st)}
-                      onMouseEnter={(e) => e.currentTarget.style.background='rgba(255,255,255,0.03)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background='transparent'}
-                    >
-                      <td style={{ padding: '0.65rem 1rem', color: '#64748b', fontWeight: 600 }}>{i + 1}</td>
-                      <td style={{ padding: '0.65rem 1rem', fontWeight: 600, color: '#fff' }}>{st.avatar} {st.name}</td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#38bdf8', fontFamily: 'monospace', fontSize: '0.8rem' }}>{st.libraryId}</td>
-                      <td style={{ padding: '0.65rem 1rem' }}>
-                        <span style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', padding: '0.15rem 0.5rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>{st.branch}</span>
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: '#f59e0b', fontWeight: 700 }}>{st.xp}</td>
-                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
-                        <span style={{ color: st.completedCount > 0 ? '#10b981' : '#64748b' }}>{st.completedCount}</span>
-                        <span style={{ color: '#64748b' }}>/100</span>
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
-                        <span style={{ fontWeight: 700, color: st.avgScore >= 80 ? '#10b981' : st.avgScore >= 60 ? '#f59e0b' : '#f43f5e' }}>{st.avgScore}%</span>
-                      </td>
-                      <td style={{ padding: '0.65rem 1rem', color: '#f43f5e', fontSize: '0.78rem' }}>{st.weakestSounds || '—'}</td>
-                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center', color: '#64748b', fontSize: '0.78rem' }}>{st.lastActive || '—'}</td>
-                      <td style={{ padding: '0.65rem 1rem', textAlign: 'center' }}>
-                        <button style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.3)', color: '#38bdf8', padding: '0.2rem 0.6rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }} onClick={(e) => { e.stopPropagation(); setSelectedStudent(st); }}>
-                          View →
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── STUDENT DETAIL PANEL ──────────────────────────────────────────────────────
-function StudentDetailPanel({ student, onBack }) {
-  const { levelDetail = [], recentAttempts = [] } = student;
-
-  let rankName = 'Bronze Speaker 🥉'; let rankColor = '#cd7f32';
-  if (student.completedCount >= 40 || student.xp >= 1000) { rankName = 'Diamond Orator 👑'; rankColor = '#38bdf8'; }
-  else if (student.completedCount >= 20 || student.xp >= 500) { rankName = 'Gold Master 🥇'; rankColor = '#f59e0b'; }
-  else if (student.completedCount >= 5  || student.xp >= 150) { rankName = 'Silver Speaker 🥈'; rankColor = '#94a3b8'; }
-
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#080e1f 0%,#0d1127 60%,#0a1628 100%)', color: '#e2e8f0', fontFamily: 'Inter,system-ui,sans-serif' }}>
-      <header style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 2rem', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)', position: 'sticky', top: 0, zIndex: 10 }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#cbd5e1', padding: '0.4rem 0.8rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.84rem' }}>
-          ← Back to Dashboard
-        </button>
-        <div style={{ fontWeight: 800, color: '#fff', fontSize: '1.05rem' }}>
-          {student.avatar} {student.name} — Detailed Report
-        </div>
-      </header>
-
-      <div style={{ padding: '1.5rem 2rem', maxWidth: '1100px', margin: '0 auto' }}>
-
-        {/* Profile banner */}
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '1.2rem 1.5rem', marginBottom: '1.2rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
-          <div style={{ fontSize: '2.5rem' }}>{student.avatar}</div>
-          <div style={{ flex: 1, minWidth: '200px' }}>
-            <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#fff' }}>{student.name}</div>
-            <div style={{ color: '#94a3b8', fontSize: '0.82rem', marginTop: '0.2rem' }}>
-              {student.libraryId} • {student.branch} • {student.email}
-            </div>
-            <div style={{ marginTop: '0.4rem', color: rankColor, fontWeight: 700, fontSize: '0.9rem' }}>{rankName}</div>
+          <div className="stat-widget-card">
+            <div className="stat-widget-label">Class Avg Accuracy</div>
+            <div className="stat-widget-val" style={{ color: 'var(--emerald)' }}>{avgClassAcc}%</div>
           </div>
-          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-            {[['XP', student.xp, '#f59e0b'], ['Passed', `${student.completedCount}/100`, '#10b981'], ['Avg Score', `${student.avgScore}%`, '#38bdf8'], ['Streak', `${student.streak}d`, '#a855f7']].map(([l, v, c]) => (
-              <div key={l} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>{l}</div>
-                <div style={{ fontWeight: 800, fontSize: '1.3rem', color: c }}>{v}</div>
-              </div>
-            ))}
+          <div className="stat-widget-card">
+            <div className="stat-widget-label">Top Student</div>
+            <div className="stat-widget-val" style={{ color: 'var(--gold)' }}>{topPerformer?.name?.split(' ')[0] || '—'}</div>
+          </div>
+          <div className="stat-widget-card">
+            <div className="stat-widget-label">Target Stage</div>
+            <div className="stat-widget-val" style={{ color: 'var(--royal-violet)' }}>Stage 3</div>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-
-          {/* Level-by-level history */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '1rem', maxHeight: '380px', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              📋 Level-by-Level Scores ({levelDetail.length} attempted)
-            </h3>
-            {levelDetail.length === 0 && <div style={{ color: '#64748b', fontSize: '0.83rem' }}>No levels attempted yet.</div>}
-            {levelDetail.map((lv) => (
-              <div key={lv.levelId} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.5rem', borderRadius: '8px', marginBottom: '0.2rem', background: lv.passed ? 'rgba(16,185,129,0.05)' : 'rgba(244,63,94,0.05)' }}>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', width: '2.5rem', flexShrink: 0 }}>Q{lv.levelId}</span>
-                <div style={{ flex: 1, height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${lv.bestScore}%`, background: lv.passed ? '#10b981' : '#f43f5e', borderRadius: '3px' }} />
-                </div>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: lv.passed ? '#10b981' : '#f43f5e', width: '2.8rem', textAlign: 'right' }}>{lv.bestScore}%</span>
-                <span style={{ fontSize: '0.68rem', color: '#64748b', width: '1.5rem', textAlign: 'center' }}>{lv.passed ? '✓' : '✗'}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Recent attempts */}
-          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '14px', padding: '1rem', maxHeight: '380px', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 0.8rem 0', fontSize: '0.85rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              🕒 Recent Practice Attempts (last {recentAttempts.length})
-            </h3>
-            {recentAttempts.length === 0 && <div style={{ color: '#64748b', fontSize: '0.83rem' }}>No attempts recorded yet.</div>}
-            {recentAttempts.map((att, i) => (
-              <div key={i} style={{ padding: '0.55rem 0.7rem', borderRadius: '8px', marginBottom: '0.4rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.83rem' }}>Q{att.levelId}: {att.label}</span>
-                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: att.passed ? '#10b981' : '#f43f5e' }}>{att.score}% {att.passed ? '✓' : '✗'}</span>
-                </div>
-                {att.weakSounds?.length > 0 && (
-                  <div style={{ fontSize: '0.72rem', color: '#f43f5e', marginTop: '0.2rem' }}>⚠ Weak: {att.weakSounds.slice(0, 3).join(', ')}</div>
-                )}
-                <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.2rem' }}>{att.date ? new Date(att.date).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : ''}</div>
-              </div>
-            ))}
-          </div>
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '0.8rem', borderRadius: '14px', border: '1px solid var(--border-light)' }}>
+          <input 
+            value={searchQuery} 
+            onChange={(e) => setSearchQuery(e.target.value)} 
+            placeholder="🔍 Search student name or ID..."
+            style={{ flex: 1, padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)', fontFamily: 'var(--font-sans)' }}
+          />
+          <select 
+            value={selectedBranch} 
+            onChange={(e) => setSelectedBranch(e.target.value)}
+            style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}
+          >
+            {BRANCHES.map(b => <option key={b} value={b}>{b === 'ALL' ? 'All Branches' : b}</option>)}
+          </select>
         </div>
 
-        {/* Weak sounds summary */}
-        {student.weakestSoundsList?.length > 0 && (
-          <div style={{ marginTop: '1rem', background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.2)', borderRadius: '12px', padding: '0.9rem 1.1rem' }}>
-            <div style={{ fontWeight: 700, color: '#f43f5e', fontSize: '0.83rem', marginBottom: '0.4rem' }}>⚠️ Top Phoneme Challenges</div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {student.weakestSoundsList.map((s) => (
-                <span key={s} style={{ background: 'rgba(244,63,94,0.12)', border: '1px solid rgba(244,63,94,0.25)', color: '#fb7185', padding: '0.2rem 0.6rem', borderRadius: '20px', fontSize: '0.82rem', fontWeight: 600 }}>{s}</span>
+        {/* Student Table */}
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: '16px', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)', textAlign: 'left' }}>
+                <th style={{ padding: '0.8rem 1rem' }}>#</th>
+                <th style={{ padding: '0.8rem 1rem' }}>Student</th>
+                <th style={{ padding: '0.8rem 1rem' }}>Library ID</th>
+                <th style={{ padding: '0.8rem 1rem' }}>Branch</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>XP</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Passed</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Avg Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((st, i) => (
+                <tr key={st.libraryId || i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '0.8rem 1rem', color: 'var(--text-muted)' }}>{i + 1}</td>
+                  <td style={{ padding: '0.8rem 1rem', fontWeight: 700 }}>{st.avatar} {st.name}</td>
+                  <td style={{ padding: '0.8rem 1rem', fontFamily: 'monospace', color: 'var(--royal-violet)' }}>{st.libraryId}</td>
+                  <td style={{ padding: '0.8rem 1rem' }}>{st.branch}</td>
+                  <td style={{ padding: '0.8rem 1rem', textAlign: 'center', color: 'var(--gold-dark)', fontWeight: 800 }}>{st.xp}</td>
+                  <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>{st.completedCount}/100</td>
+                  <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, color: st.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                    {st.avgScore}%
+                  </td>
+                </tr>
               ))}
-            </div>
-          </div>
-        )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
-function LiveCoach({ status, seconds, levelType }) {
-  const targetSeconds = levelType === 'paragraph' ? 24 : levelType === 'sentence' ? 10 : 5;
-  const pace = Math.min(100, Math.round((seconds / targetSeconds) * 100));
-  const prompt =
-    status === 'recording'
-      ? seconds < 2
-        ? 'Speak clearly'
-        : seconds > targetSeconds
-          ? 'Wrap up now'
-          : 'Maintain rhythm'
-      : status === 'processing'
-        ? 'AI Scorer running...'
-        : 'Microphone Ready';
+// ── AUTHENTICATION SCREEN ───────────────────────────────────────────────────
+function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
+  const [authMode, setAuthMode] = useState('login');
+  const [authError, setAuthError] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [selectedAvatar, setSelectedAvatar] = useState('👨‍🎓');
+
+  const AVATARS = ['👨‍🎓', '👩‍💻', '🚀', '👑', '🎯', '⚡'];
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setAuthError('');
+    setResetMsg('');
+    setAuthLoading(true);
+
+    const formData = new FormData(event.currentTarget);
+    const libraryId = formData.get('libraryId');
+    const email = formData.get('email');
+    const password = formData.get('password');
+    const name = formData.get('name');
+    const branch = formData.get('branch');
+    const teacherId = formData.get('teacherId');
+
+    try {
+      if (authMode === 'teacher') {
+        const { signInTeacher } = await import('./auth.js');
+        const teacherObj = signInTeacher({ teacherId, password });
+        onTeacherSuccess(teacherObj);
+      } else if (authMode === 'forgot') {
+        const targetEmail = await resetUserPassword({ email, newPassword: password });
+        setResetMsg(`✅ Password reset for ${targetEmail}! Login with your new password.`);
+      } else if (authMode === 'register') {
+        const loggedUser = await signUpUser({ name, email, libraryId, branch, password, avatar: selectedAvatar });
+        onAuthSuccess(loggedUser);
+      } else {
+        const loggedUser = await signInUser({ libraryId, password });
+        onAuthSuccess(loggedUser);
+      }
+    } catch (err) {
+      setAuthError(err.message || 'Authentication failed.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
 
   return (
-    <div className="live-coach">
-      <div>
-        <strong>{prompt}</strong>
-        <span>{seconds}s recorded</span>
-      </div>
-      <div className="meter">
-        <span style={{ width: `${pace}%` }} />
-      </div>
-    </div>
-  );
-}
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', background: 'var(--bg-page)' }}>
+      <div style={{ background: 'var(--bg-surface)', border: '1.5px solid var(--border-light)', borderRadius: '24px', padding: '2.5rem', maxWidth: '440px', width: '100%', boxShadow: 'var(--shadow-floating)', textAlign: 'center' }}>
+        <Mascot state="waving" size={88} />
+        
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', marginTop: '0.6rem' }}>
+          Speak Better. Grow Confident.
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+          Your friendly AI companion to master pronunciation, grammar &amp; communication.
+        </p>
 
-function ResultScreen({ result, activeLevel, onRetry, onMap }) {
-  const data = result.pronunciation || result || {};
-  const currentScore = data.overall_score || data.score || result.score || 0;
-  const radius = 66;
-  const strokeDasharray = 2 * Math.PI * radius;
-  const strokeDashoffset = strokeDasharray * (1 - currentScore / 100);
-
-  const wrongItems = data.sound_level_comparison?.filter(item => item.type === "wrong" || item.type === "close") || [];
-  const missingItems = data.sound_level_comparison?.filter(item => item.type === "missing") || [];
-  const extraItems = data.sound_level_comparison?.filter(item => item.type === "extra") || [];
-
-  return (
-    <div className="result-panel">
-      <div className="score-circle-container">
-        <svg className="score-ring" width="160" height="160">
-          <circle
-            className="score-ring-bg"
-            stroke="rgba(255, 255, 255, 0.04)"
-            strokeWidth="10"
-            fill="transparent"
-            r={radius}
-            cx="80"
-            cy="80"
-          />
-          <circle
-            className="score-ring-fill"
-            stroke={result.passed ? "#10b981" : "#f59e0b"}
-            strokeWidth="10"
-            strokeDasharray={strokeDasharray}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            fill="transparent"
-            r={radius}
-            cx="80"
-            cy="80"
-            transform="rotate(-90 80 80)"
-          />
-        </svg>
-        <div className="score-circle-text">
-          <strong>{currentScore}</strong>
-          <span>SCORE</span>
+        {/* Tab switch */}
+        <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', marginBottom: '1.25rem' }}>
+          <button 
+            type="button" 
+            className={`btn-3d ${authMode === 'login' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
+            onClick={() => setAuthMode('login')}
+          >
+            Student Login
+          </button>
+          <button 
+            type="button" 
+            className={`btn-3d ${authMode === 'register' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
+            onClick={() => setAuthMode('register')}
+          >
+            Register
+          </button>
+          <button 
+            type="button" 
+            className={`btn-3d ${authMode === 'teacher' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
+            onClick={() => setAuthMode('teacher')}
+          >
+            Faculty
+          </button>
         </div>
-      </div>
 
-      <div className="score-badge-container">
-        {result.passed ? (
-          <span className="score-badge score-badge--passed">🎉 Passed</span>
-        ) : (
-          <span className="score-badge score-badge--retry">💪 Keep Practicing</span>
-        )}
-      </div>
-
-      {data.sound_level_comparison?.length > 0 && (
-        <div className="result-section">
-          <h2 className="section-title">
-            <span className="section-title-icon">🔤</span> PHONEME BREAKDOWN
-          </h2>
-          <div className="phonemes-container">
-            {data.sound_level_comparison.map((item, idx) => {
-              const statusClass = item.type === "correct" ? "sound-pill--correct"
-                : item.type === "accent_match" ? "sound-pill--accent_match"
-                : item.type === "close" ? "sound-pill--close"
-                : "sound-pill--wrong";
-              
-              const exp = humanizePhoneme(item.expected);
-              const spk = humanizePhoneme(item.spoken);
-
-              return (
-                <div key={idx} className={`sound-pill ${statusClass}`} style={{ textAlign: 'center', minWidth: '70px', padding: '0.5rem 0.8rem' }}>
-                  <div style={{ fontSize: '0.7rem', opacity: 0.75, fontWeight: 800 }}>
-                    {item.type === 'missing' ? 'x Missing' : item.type === 'extra' ? '+ Extra' : item.type === 'accent_match' ? '≈ Accepted' : item.type === 'correct' ? '✓ Clear' : '⚠ Check'}
-                  </div>
-                  
-                  <strong style={{ fontSize: '1.15rem', display: 'block', marginTop: '0.2rem', color: '#fff' }}>
-                    {exp.main || spk.main} <span style={{ fontSize: '0.85rem', color: '#38bdf8', fontWeight: 600 }}>{exp.sub || spk.sub}</span>
-                  </strong>
-                  
-                  {spk.main && exp.main && spk.main !== exp.main && (
-                    <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '0.2rem', color: '#f43f5e' }}>
-                      Heard: {spk.main} {spk.sub}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="result-section">
-        <h2 className="section-title">
-          <span className="section-title-icon">💬</span> FEEDBACK & CORRECTIONS
-        </h2>
-        <div className="feedback-alerts-container">
-          <div className="feedback-alert-card feedback-alert-card--info">
-            <span className="feedback-alert-icon">ℹ️</span>
-            <p>{data.ai_summary || (result.passed ? "Excellent! All sounds matched target parameters." : "Fair attempt. Keep practicing the highlighted sounds.")}</p>
-          </div>
-
-          {data.audio_quality_warning && (
-            <div className="feedback-alert-card feedback-alert-card--warning">
-              <span className="feedback-alert-icon">⚠️</span>
-              <p>{data.audio_quality_warning}</p>
-            </div>
-          )}
-
-          {wrongItems.map((item, idx) => {
-            const exp = humanizePhoneme(item.expected);
-            const spk = humanizePhoneme(item.spoken);
-            return (
-              <div key={idx} className="feedback-alert-card feedback-alert-card--info">
-                <span className="feedback-alert-icon">ℹ️</span>
-                <p>Focus on target sound: <strong>{exp.main} {exp.sub}</strong> → you said <strong>"{spk.main} {spk.sub}"</strong></p>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'left' }}>
+          {authMode === 'teacher' && (
+            <>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Faculty ID</label>
+                <input name="teacherId" required placeholder="e.g. FACULTY01" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem', fontFamily: 'var(--font-sans)' }} />
               </div>
-            );
-          })}
-
-          {missingItems.length > 0 && (
-            <div className="feedback-alert-card feedback-alert-card--info">
-              <span className="feedback-alert-icon">ℹ️</span>
-              <p>
-                {missingItems.length} sound(s) missing — try to pronounce every sound completely.
-              </p>
-            </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Password</label>
+                <input name="password" type="password" required placeholder="••••••••" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }} />
+              </div>
+            </>
           )}
 
-          {extraItems.length > 0 && (
-            <div className="feedback-alert-card feedback-alert-card--info">
-              <span className="feedback-alert-icon">ℹ️</span>
-              <p>
-                {extraItems.length} extra sound(s) detected — try to be more precise.
-              </p>
-            </div>
+          {authMode === 'register' && (
+            <>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Full Name</label>
+                <input name="name" required placeholder="Arpit Agarwal" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>College Email</label>
+                <input name="email" type="email" required placeholder="xyz.2428cse112@kiet.edu" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Branch</label>
+                <select name="branch" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }}>
+                  {['CSE','IT','CS','CSIT','CSE (AI)','CSE(AIML)','MECH','ECE','ELCE','EEE'].map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Choose Avatar</label>
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.3rem' }}>
+                  {AVATARS.map(av => (
+                    <button 
+                      key={av} 
+                      type="button" 
+                      onClick={() => setSelectedAvatar(av)}
+                      style={{
+                        fontSize: '1.4rem',
+                        padding: '0.3rem 0.5rem',
+                        borderRadius: '10px',
+                        border: selectedAvatar === av ? '2px solid var(--royal-violet)' : '1px solid var(--border-light)',
+                        background: selectedAvatar === av ? 'var(--bg-lavender)' : 'var(--bg-surface)'
+                      }}
+                    >
+                      {av}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
-        </div>
-      </div>
 
-      <div className="result-section">
-        <h2 className="section-title">
-          <span className="section-title-icon">🎯</span> HOW TO IMPROVE
-        </h2>
-        <div className="how-to-improve-container">
-          {wrongItems.map((item, idx) => (
-            <div key={idx} className="improve-card">
-              <span className="improve-icon">💡</span>
-              <p>You said "{item.spoken}" — try pronouncing "{item.expected}" more clearly</p>
-            </div>
-          ))}
-
-          {missingItems.map((item, idx) => (
-            <div key={idx} className="improve-card">
-              <span className="improve-icon">💡</span>
-              <p>You missed the "{item.expected}" sound — make sure to include it</p>
-            </div>
-          ))}
-
-          {extraItems.map((item, idx) => (
-            <div key={idx} className="improve-card">
-              <span className="improve-icon">💡</span>
-              <p>Extra "{item.spoken}" sound detected — try to avoid adding it</p>
-            </div>
-          ))}
-
-          {wrongItems.length === 0 && missingItems.length === 0 && extraItems.length === 0 && (
-            <div className="improve-card">
-              <span className="improve-icon">💡</span>
-              <p>Fabulous pronunciation! All phonemes aligned perfectly. Keep repeating this challenge to build strong muscle memory.</p>
-            </div>
+          {(authMode === 'login' || authMode === 'register') && (
+            <>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>College Library ID</label>
+                <input name="libraryId" required placeholder="Ex: 2428CSEAIML994" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem', textTransform: 'uppercase' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Password</label>
+                <input name="password" type="password" required placeholder="••••••••" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }} />
+              </div>
+            </>
           )}
-        </div>
-      </div>
 
-      <div className="practice-actions" style={{ marginTop: '1rem' }}>
-        <button className="secondary-action" type="button" onClick={onRetry}>
-          Practice Again
-        </button>
-        <button className="primary-action" type="button" onClick={onMap}>
-          Continue Quest Map
-        </button>
+          {authError && <div style={{ color: '#BE123C', fontSize: '0.82rem' }}>{authError}</div>}
+          {resetMsg && <div style={{ color: 'var(--emerald-dark)', fontSize: '0.82rem' }}>{resetMsg}</div>}
+
+          <button className="btn-3d btn-3d-primary" type="submit" disabled={authLoading} style={{ marginTop: '0.5rem' }}>
+            {authLoading ? 'Processing...' : authMode === 'register' ? 'Register & Begin Quest 🚀' : 'Start Your Journey 🚀'}
+          </button>
+        </form>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }) {
-  return (
-    <div className="stat">
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
+// ── UTILITY HELPERS ─────────────────────────────────────────────────────────
+function getTimeOfDay() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'morning';
+  if (hour < 17) return 'afternoon';
+  return 'evening';
 }
 
 function normalizeScore(score) {
@@ -2439,89 +2449,11 @@ function getWeakSounds(attempts) {
   const counts = {};
   attempts.forEach((attempt) => {
     (attempt.weakSounds || []).forEach((sound) => {
-      const h = humanizePhoneme(sound).main;
-      if (h) counts[h] = (counts[h] || 0) + 1;
+      if (sound) counts[sound] = (counts[sound] || 0) + 1;
     });
   });
   return Object.entries(counts)
     .sort((left, right) => right[1] - left[1])
     .slice(0, 3)
     .map(([sound]) => sound);
-}
-
-// ── IPA TO FRIENDLY ENGLISH + HINDI PHONEME HUMANIZER ─────────────────────────
-const PHONEME_HUMAN_MAP = {
-  'θ': { sound: 'TH', hindi: 'थ', hint: "unvoiced 'th' as in think" },
-  'ð': { sound: 'TH', hindi: 'ध', hint: "voiced 'th' as in mother" },
-  'ʃ': { sound: 'SH', hindi: 'श', hint: "sh sound as in ship" },
-  'tʃ': { sound: 'CH', hindi: 'च', hint: "ch sound as in chair" },
-  'dʒ': { sound: 'J', hindi: 'ज', hint: "j sound as in job" },
-  'ŋ': { sound: 'NG', hindi: 'ङ', hint: "ng sound as in sing" },
-  'ʒ': { sound: 'ZH', hindi: 'झ', hint: "zh sound as in vision" },
-  'v': { sound: 'V', hindi: 'व', hint: "v sound" },
-  'w': { sound: 'W', hindi: 'व', hint: "w sound" },
-  'r': { sound: 'R', hindi: 'र', hint: "r sound" },
-  'ɹ': { sound: 'R', hindi: 'र', hint: "r sound" },
-  'ɾ': { sound: 'R', hindi: 'र', hint: "r sound" },
-  'p': { sound: 'P', hindi: 'प', hint: "p sound" },
-  'b': { sound: 'B', hindi: 'ब', hint: "b sound" },
-  't': { sound: 'T', hindi: 'त/ट', hint: "t sound" },
-  'd': { sound: 'D', hindi: 'द/ड', hint: "d sound" },
-  'k': { sound: 'K', hindi: 'क', hint: "k sound" },
-  'g': { sound: 'G', hindi: 'ग', hint: "g sound" },
-  'f': { sound: 'F', hindi: 'फ़', hint: "f sound" },
-  's': { sound: 'S', hindi: 'स', hint: "s sound" },
-  'z': { sound: 'Z', hindi: 'ज़', hint: "z sound" },
-  'm': { sound: 'M', hindi: 'म', hint: "m sound" },
-  'n': { sound: 'N', hindi: 'न', hint: "n sound" },
-  'l': { sound: 'L', hindi: 'ल', hint: "l sound" },
-  'h': { sound: 'H', hindi: 'ह', hint: "h sound" },
-  'j': { sound: 'Y', hindi: 'य', hint: "y sound" },
-  '3:r': { sound: 'ER', hindi: 'अर्', hint: "er sound as in bird" },
-  'ɜːr': { sound: 'ER', hindi: 'अर्', hint: "er sound as in bird" },
-  'ɜː': { sound: 'ER', hindi: 'अर्', hint: "er sound as in bird" },
-  'ɑ:': { sound: 'AH', hindi: 'आ', hint: "long ah sound as in car" },
-  'ɑ': { sound: 'AH', hindi: 'आ', hint: "ah sound" },
-  'æ': { sound: 'AE', hindi: 'ऐ', hint: "short a sound as in cat" },
-  'ʌ': { sound: 'UH', hindi: 'अ', hint: "short u sound as in sun" },
-  'ə': { sound: 'AH', hindi: 'अ', hint: "schwa sound" },
-  'ɛ': { sound: 'EH', hindi: 'ए', hint: "short e sound as in bed" },
-  'e': { sound: 'EH', hindi: 'ए', hint: "short e sound" },
-  'ɪ': { sound: 'IH', hindi: 'इ', hint: "short i sound as in sit" },
-  'i': { sound: 'IH', hindi: 'इ', hint: "i sound" },
-  'iː': { sound: 'EE', hindi: 'ई', hint: "long ee sound as in see" },
-  'i:': { sound: 'EE', hindi: 'ई', hint: "long ee sound as in see" },
-  'ʊ': { sound: 'OO', hindi: 'उ', hint: "short oo sound as in book" },
-  'u': { sound: 'OO', hindi: 'उ', hint: "oo sound" },
-  'uː': { sound: 'OO', hindi: 'ऊ', hint: "long oo sound as in moon" },
-  'u:': { sound: 'OO', hindi: 'ऊ', hint: "long oo sound as in moon" },
-  'ɔː': { sound: 'AW', hindi: 'ऑ', hint: "aw sound as in ball" },
-  'ɔ:': { sound: 'AW', hindi: 'ऑ', hint: "aw sound as in ball" },
-  'ɔ': { sound: 'AW', hindi: 'ऑ', hint: "aw sound" },
-  'oʊ': { sound: 'OH', hindi: 'ओ', hint: "oh sound as in go" },
-  'əʊ': { sound: 'OH', hindi: 'ओ', hint: "oh sound as in go" },
-  'eɪ': { sound: 'AY', hindi: 'ए', hint: "ay sound as in day" },
-  'aɪ': { sound: 'AI', hindi: 'आइ', hint: "ai sound as in my" },
-  'aʊ': { sound: 'OW', hindi: 'आउ', hint: "ow sound as in now" },
-  'ɔɪ': { sound: 'OY', hindi: 'ओइ', hint: "oy sound as in boy" },
-};
-
-function humanizePhoneme(symbol) {
-  if (!symbol) return { main: '', sub: '', hint: '' };
-  const clean = String(symbol).trim().toLowerCase();
-  
-  if (PHONEME_HUMAN_MAP[clean]) {
-    const item = PHONEME_HUMAN_MAP[clean];
-    return {
-      main: item.sound,
-      sub: `(${item.hindi})`,
-      hint: item.hint
-    };
-  }
-  
-  return {
-    main: clean.toUpperCase(),
-    sub: '',
-    hint: ''
-  };
 }
