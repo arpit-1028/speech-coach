@@ -145,6 +145,7 @@ export default function App() {
   // Live silence detection refs for auto-stop
   const audioCtxRef = useRef(null);
   const silenceDetectRef = useRef(null);
+  const speechDetectedRef = useRef(false);
 
   const activeLevel = useMemo(() => getLevel(activeLevelId), [activeLevelId]);
   const completedCount = allLevels.filter((lvl) => (progress.completed[lvl.id]?.bestScore || 0) >= PASS_SCORE).length;
@@ -230,6 +231,7 @@ export default function App() {
 
         if (rms > 8) {
           speechDetected = true;
+          speechDetectedRef.current = true;
           silenceStartTime = null;
         } else if (speechDetected) {
           if (!silenceStartTime) {
@@ -329,6 +331,7 @@ export default function App() {
       const recorder = new AudioRecorder();
       const stream = await recorder.start();
       recorderRef.current = recorder;
+      speechDetectedRef.current = false;
       setError('');
       setStatus('recording');
 
@@ -491,7 +494,7 @@ export default function App() {
             <span>Grammar</span>
           </button>
 
-          <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '0.4rem 0' }} />
+
 
           <button 
             className="sidebar-nav-btn"
@@ -706,7 +709,7 @@ export default function App() {
                     <div className="plan-item-left">
                       <div className="plan-item-icon">🎯</div>
                       <div>
-                        <div className="plan-item-title">15-Question Placement Diagnostic Test</div>
+                        <div className="plan-item-title">15-Question Diagnostic Test</div>
                         <div className="plan-item-reward">+100 XP Reward</div>
                       </div>
                     </div>
@@ -838,7 +841,7 @@ export default function App() {
 
               <div className="practice-card">
                 <span className="practice-level-badge">
-                  Stage {activeLevel.stageTitle || '1'} • Challenge #{activeLevel.id}
+                  {activeLevel.stageTitle || 'Stage 1'} • Challenge #{activeLevel.id}
                 </span>
 
                 <div className="target-word-display">
@@ -846,7 +849,7 @@ export default function App() {
                 </div>
 
                 <div className="target-ipa-display" title="English & Hindi Phonetic Guide">
-                  /{activeLevel.focus}/ • {formatPhoneme(activeLevel.focus)}
+                  {formatPhoneme(activeLevel.focus)}
                 </div>
 
                 <p className="target-focus-hint">
@@ -1314,14 +1317,6 @@ export default function App() {
               <span>Grammar</span>
             </button>
 
-            <button 
-              className="mobile-nav-btn"
-              type="button"
-              onClick={() => setShowProfileModal(true)}
-            >
-              <span className="mobile-nav-icon">👤</span>
-              <span>Profile</span>
-            </button>
           </div>
         </div>
       </div>
@@ -1953,7 +1948,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
         <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
           <h2 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-main)' }}>
-            🎯 Placement Diagnostic Assessment
+            🎯 Diagnostic Assessment
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             15-Question Comprehensive Pronunciation &amp; Sound Mastery Test
@@ -2036,7 +2031,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
                 type="button" 
                 style={{ flex: 1 }}
               >
-                🚀 Apply Placement &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
+                🚀 Apply Results &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
               </button>
               <button onClick={onClose} className="btn-3d btn-3d-white" type="button">
                 Done
@@ -2065,10 +2060,6 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               
               <div style={{ fontSize: '2.8rem', fontWeight: 900, color: 'var(--text-main)', margin: '0.4rem 0', letterSpacing: '-0.02em' }}>
                 {currentQ.word}
-              </div>
-              
-              <div style={{ color: 'var(--royal-violet)', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '1rem' }}>
-                /{currentQ.pronounce || currentQ.sound}/ • {formatPhoneme(currentQ.sound)}
               </div>
 
               {/* Sapphire Mascot */}

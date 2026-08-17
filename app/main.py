@@ -106,7 +106,7 @@ async def check(
             whisper_words = _transcribe_words(file_path, hint_word=word)
             whisper_heard = " ".join(whisper_words)
         except Exception:
-            whisper_heard = word.lower()
+            whisper_heard = ""  # Don't assume correct word on failure
 
         # Step 4: Get ALL expected pronunciation variants from CMU dict → IPA
         expected_variants_cmu = get_phonemes_variants(word)
@@ -142,9 +142,16 @@ async def check(
             print(f"WORD-MATCH BONUS: Whisper heard '{whisper_heard}' == expected '{word}', boosting {best_sc}→72")
             best_sc = 72
 
-        # Step 6b: If audio quality is bad, protect user from false low scores
-        if quality_category in ("silence", "low_volume") and best_sc < 60:
-            best_sc = max(best_sc, 75)
+        # Step 6b: If audio is silence or too quiet, user didn't actually speak
+        # → force score to 0 so we don't reward empty recordings
+        if quality_category == "silence":
+            print(f"SILENCE DETECTED: overriding score {best_sc} → 0")
+            best_sc = 0
+        elif quality_category == "low_volume" and best_sc > 0:
+            # Very quiet audio — cap at a low score to avoid rewarding noise
+            capped = min(best_sc, 30)
+            print(f"LOW VOLUME: capping score {best_sc} → {capped}")
+            best_sc = capped
 
         # Step 7: Generate feedback
         breakdown = score_breakdown(best_results)
