@@ -1834,44 +1834,60 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
     try {
       const audioBlob = await recorderRef.current.stop();
-      let evalData = null;
+      let calcScore = 0;
+      let detected = false;
+      let spokenWord = '';
 
+      // 1. Evaluate using gold-standard /check/{word} engine (EXACT same as normal pronunciation)
       try {
-        evalData = await evaluateDiagnosticSound(audioBlob, currentIndex);
+        const checkRes = await checkPronunciation(currentQ.word, audioBlob);
+        if (checkRes && typeof checkRes.score !== 'undefined') {
+          calcScore = normalizeScore(checkRes.score);
+          detected = calcScore >= 60;
+          spokenWord = checkRes.spoken_word || (checkRes.spoken && checkRes.spoken.join('')) || currentQ.word;
+        }
       } catch {
-        evalData = null;
-      }
-
-      if (!evalData || typeof evalData.score !== 'number') {
-        const spoken = (heardRef.current || liveHeard || '').trim().toLowerCase();
-        let calcScore = 0.0;
-        let detected = false;
-
-        if (spoken) {
-          if (spoken === targetWord || spoken.includes(targetWord)) {
-            calcScore = 0.92;
-            detected = true;
-          } else if (targetWord.startsWith(spoken.slice(0, 3))) {
-            calcScore = 0.72;
-            detected = true;
+        // Fallback: try evaluateDiagnosticSound
+        try {
+          const diagRes = await evaluateDiagnosticSound(audioBlob, currentIndex);
+          if (diagRes && typeof diagRes.score !== 'undefined') {
+            calcScore = normalizeScore(diagRes.score);
+            detected = diagRes.detected || calcScore >= 60;
+            spokenWord = diagRes.spoken_word || currentQ.word;
+          }
+        } catch {
+          // Client-side Web Speech recognition fallback for standalone deployment
+          const spoken = (heardRef.current || liveHeard || '').trim().toLowerCase();
+          spokenWord = spoken;
+          if (spoken) {
+            if (spoken === targetWord || spoken.includes(targetWord)) {
+              calcScore = 92;
+              detected = true;
+            } else if (targetWord.startsWith(spoken.slice(0, 3)) || spoken.startsWith(targetWord.slice(0, 3))) {
+              calcScore = 76;
+              detected = true;
+            } else {
+              calcScore = 25; // wrong word
+              detected = false;
+            }
           } else {
-            calcScore = 0.20;
+            calcScore = 0;
             detected = false;
           }
         }
-
-        evalData = {
-          display_name: currentQ.display_name,
-          sound: currentQ.sound,
-          word: currentQ.word,
-          pronounce: currentQ.pronounce,
-          skill: currentQ.skill || 'consonants',
-          score: calcScore,
-          detected: detected,
-          spoken_word: spoken,
-          spoken: spoken ? [spoken] : []
-        };
       }
+
+      const evalData = {
+        display_name: currentQ.display_name,
+        sound: currentQ.sound,
+        word: currentQ.word,
+        pronounce: currentQ.pronounce,
+        skill: currentQ.skill || 'consonants',
+        score: calcScore, // Always normalized 0 to 100
+        detected: detected,
+        spoken_word: spokenWord,
+        spoken: spokenWord ? [spokenWord] : []
+      };
 
       const nextResults = [...results, evalData];
       setResults(nextResults);
@@ -1890,19 +1906,10 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     }
   }
 
-  async function generateFinalReport(allResults) {
+  function generateFinalReport(allResults) {
     setStatus('processing');
     try {
-      let rep;
-      try {
-        rep = await fetchDiagnosticReport(allResults);
-        const localOverall = computeLocalOverall(allResults);
-        if ((!rep || rep.overall_score === 0 || rep.overall_score == null) && localOverall > 0) {
-          rep = buildLocalReport(allResults);
-        }
-      } catch {
-        rep = buildLocalReport(allResults);
-      }
+      const rep = buildLocalReport(allResults);
       setReport(rep);
       setStatus('report');
     } catch {
@@ -1913,8 +1920,8 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
   function computeLocalOverall(allResults) {
     if (!allResults.length) return 0;
-    const total = allResults.reduce((sum, r) => sum + (r.score || 0), 0);
-    return Math.round((total / allResults.length) * 100);
+    const total = allResults.reduce((sum, r) => sum + normalizeScore(r.score), 0);
+    return Math.round(total / allResults.length);
   }
 
   function buildLocalReport(allResults) {
@@ -1922,13 +1929,13 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     allResults.forEach((r) => {
       const skill = r.skill || 'consonants';
       if (!skillGroups[skill]) skillGroups[skill] = [];
-      skillGroups[skill].push(r.score || 0);
+      skillGroups[skill].push(normalizeScore(r.score));
     });
 
     const pronunciation_scores = {};
     Object.entries(skillGroups).forEach(([skill, scores]) => {
       pronunciation_scores[skill] = Math.round(
-        (scores.reduce((a, b) => a + b, 0) / scores.length) * 100
+        scores.reduce((a, b) => a + b, 0) / scores.length
       );
     });
 
@@ -2002,6 +2009,16 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     setProgress(updated);
     localStorage.setItem(`sapphireSpeechCoachProgress:${user?.id || 'guest'}`, JSON.stringify(updated));
     onClose();
+  }
+
+  function listenDiagnosticTarget() {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
+    const utterance = new SpeechSynthesisUtterance(currentQ.word);
+    utterance.lang = 'en-IN';
+    utterance.rate = 0.85;
+    window.speechSynthesis.speak(utterance);
   }
 
   const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
@@ -2090,6 +2107,17 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                 💡 {currentQ.hint || `Speak "${currentQ.word}" clearly into your microphone.`}
               </p>
+
+              <div style={{ marginTop: '0.6rem' }}>
+                <button 
+                  type="button"
+                  className="listen-audio-btn" 
+                  onClick={listenDiagnosticTarget}
+                  style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}
+                >
+                  <span>🔊</span> Listen Target Voice
+                </button>
+              </div>
 
               {liveHeard && (
                 <div style={{ marginTop: '0.8rem', padding: '0.4rem 0.8rem', background: 'var(--bg-lavender)', borderRadius: '8px', color: 'var(--royal-violet-deep)', fontSize: '0.85rem', fontWeight: 700 }}>
