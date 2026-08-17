@@ -1,11 +1,17 @@
 // ────────────────────────────────────────────────────────────────────────────
 //  App.jsx — Sapphire Speech Coach (Human-Crafted Gamified Experience)
-//  Complete UI Overhaul: Warm light pastel theme, Sapphire Mascot companion,
-//  Home Dashboard, Winding Quest Map, Practice/Result flow, Grammar, Translator,
-//  Diagnostic, Leaderboard, Achievements, Profile & Teacher Analytics.
+//  Full UI/UX Alignment with Reference Mockups:
+//  - English & Hindi phonetic translations for all IPA symbols
+//  - Clean, uncluttered Home Dashboard (Screen 2)
+//  - Mobile Navigation with direct Translator & AI access (Screen 7)
+//  - Clean Practice Screen without distractions (Screen 4)
+//  - Streamlined Result Screen with Phoneme breakdown (Screen 5 - Fluency/Clarity removed)
+//  - Diagnostic Test without hints/audio + Detailed 15-Question Report (Screen 8)
+//  - Auto-silence voice recording detection across Pronunciation, Grammar & Translator
 // ────────────────────────────────────────────────────────────────────────────
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Mascot from './Mascot.jsx';
+import { formatPhoneme, formatPhonemeShort, humanizeFeedback } from './phoneticMap.js';
 import { 
   API_BASE, 
   checkPronunciation, 
@@ -15,8 +21,7 @@ import {
   fetchScenario,
   translateInterview,
   fetchDiagnosticQuestions,
-  evaluateDiagnosticSound,
-  fetchDiagnosticReport
+  evaluateDiagnosticSound
 } from './api.js';
 import { AudioRecorder } from './audio.js';
 import { 
@@ -48,6 +53,7 @@ class ConfettiEffect {
   }
   
   start() {
+    if (!this.canvas) return;
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
     this.particles = [];
@@ -67,7 +73,7 @@ class ConfettiEffect {
   }
   
   animate = () => {
-    if (this.particles.length === 0) return;
+    if (this.particles.length === 0 || !this.ctx) return;
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let remaining = false;
     
@@ -135,6 +141,10 @@ export default function App() {
   const recorderRef = useRef(null);
   const confettiCanvasRef = useRef(null);
   const confettiEffectRef = useRef(null);
+  
+  // Live silence detection refs for auto-stop
+  const audioCtxRef = useRef(null);
+  const silenceDetectRef = useRef(null);
 
   const activeLevel = useMemo(() => getLevel(activeLevelId), [activeLevelId]);
   const completedCount = allLevels.filter((lvl) => (progress.completed[lvl.id]?.bestScore || 0) >= PASS_SCORE).length;
@@ -144,25 +154,6 @@ export default function App() {
   const levelXp = progress.xp % 100;
   const lastAttempt = progress.attempts?.[0];
   const weakSounds = getWeakSounds(progress.attempts || []);
-
-  // Compute live student skill breakdown from real attempts
-  const skillsMatrix = useMemo(() => {
-    const attempts = progress.attempts || [];
-    if (attempts.length === 0) {
-      return { pronunciation: 85, clarity: 82, fluency: 80, vocabulary: 75, confidence: 85 };
-    }
-    const avgScore = Math.round(attempts.reduce((sum, a) => sum + (a.score || 0), 0) / attempts.length);
-    const passRatio = Math.round((attempts.filter(a => a.passed).length / attempts.length) * 100);
-    const vocabScore = Math.min(100, Math.max(50, completedCount * 3 + 40));
-
-    return {
-      pronunciation: Math.min(100, Math.max(40, avgScore)),
-      clarity: Math.min(100, Math.max(45, Math.round(avgScore * 0.96 + 4))),
-      fluency: Math.min(100, Math.max(40, Math.round(avgScore * 0.92 + 6))),
-      vocabulary: vocabScore,
-      confidence: Math.min(100, Math.max(50, passRatio))
-    };
-  }, [progress.attempts, completedCount]);
 
   useEffect(() => {
     if (confettiCanvasRef.current && !confettiEffectRef.current) {
@@ -197,6 +188,63 @@ export default function App() {
     if (confettiEffectRef.current) {
       confettiEffectRef.current.start();
     }
+  }
+
+  function cleanupSilenceDetector() {
+    if (silenceDetectRef.current) {
+      cancelAnimationFrame(silenceDetectRef.current);
+      silenceDetectRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch {}
+      audioCtxRef.current = null;
+    }
+  }
+
+  // ── Auto Silence Detection across Pronunciation, Translation & Grammar ──
+  function startSilenceDetector(stream, mode) {
+    try {
+      cleanupSilenceDetector();
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.fftSize);
+      let speechDetected = false;
+      let silenceStartTime = null;
+
+      function checkLoop() {
+        if (!recorderRef.current) return;
+        analyser.getByteTimeDomainData(dataArray);
+        let sumSq = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const norm = (dataArray[i] - 128) / 128;
+          sumSq += norm * norm;
+        }
+        const rms = Math.sqrt(sumSq / dataArray.length) * 100;
+
+        if (rms > 8) {
+          speechDetected = true;
+          silenceStartTime = null;
+        } else if (speechDetected) {
+          if (!silenceStartTime) {
+            silenceStartTime = Date.now();
+          } else if (Date.now() - silenceStartTime > 1300) {
+            // User finished speaking and paused for 1.3s -> Auto-Stop!
+            cleanupSilenceDetector();
+            stopRecording(mode);
+            return;
+          }
+        }
+        silenceDetectRef.current = requestAnimationFrame(checkLoop);
+      }
+      silenceDetectRef.current = requestAnimationFrame(checkLoop);
+    } catch {}
   }
 
   async function loadNextGrammar() {
@@ -277,17 +325,24 @@ export default function App() {
     }
 
     try {
+      cleanupSilenceDetector();
       const recorder = new AudioRecorder();
-      await recorder.start();
+      const stream = await recorder.start();
       recorderRef.current = recorder;
       setError('');
       setStatus('recording');
+
+      // Attach silence detector for auto-stop
+      if (stream) {
+        startSilenceDetector(stream, mode);
+      }
     } catch {
       setError('Microphone permission blocked. Please allow mic access in your browser.');
     }
   }
 
   async function stopRecording(mode) {
+    cleanupSilenceDetector();
     if (!recorderRef.current) return;
     setStatus('processing');
 
@@ -411,18 +466,6 @@ export default function App() {
           </button>
 
           <button 
-            className={`sidebar-nav-btn ${screen === 'grammar' ? 'active' : ''}`}
-            type="button"
-            onClick={() => {
-              setGrammarResult(null);
-              setScreen('grammar');
-            }}
-          >
-            <span className="sidebar-nav-icon">📝</span>
-            <span>Grammar</span>
-          </button>
-
-          <button 
             className={`sidebar-nav-btn ${screen === 'translate' ? 'active' : ''}`}
             type="button"
             onClick={() => {
@@ -434,6 +477,18 @@ export default function App() {
           >
             <span className="sidebar-nav-icon">🔄</span>
             <span>Translator &amp; AI</span>
+          </button>
+
+          <button 
+            className={`sidebar-nav-btn ${screen === 'grammar' ? 'active' : ''}`}
+            type="button"
+            onClick={() => {
+              setGrammarResult(null);
+              setScreen('grammar');
+            }}
+          >
+            <span className="sidebar-nav-icon">📝</span>
+            <span>Grammar</span>
           </button>
 
           <div style={{ height: '1px', background: 'var(--border-subtle)', margin: '0.4rem 0' }} />
@@ -491,13 +546,13 @@ export default function App() {
         <header className="top-appbar">
           <div className="topbar-greeting">
             <h2>Good {getTimeOfDay()}, {user?.name?.split(' ')[0] || 'Learner'}! 👋</h2>
-            <p>Ready to level up your English communication today?</p>
+            <p>Let's reach your speech goal today!</p>
           </div>
 
           <div className="topbar-badges">
             <div className="stat-pill stat-pill-streak" title="Daily Streak">
               <span>🔥</span>
-              <span>{progress.streak}d</span>
+              <span>{progress.streak}d Streak</span>
             </div>
 
             <div className="stat-pill stat-pill-xp" title="Total XP Earned">
@@ -505,23 +560,10 @@ export default function App() {
               <span>{progress.xp} XP</span>
             </div>
 
-            <button 
-              type="button" 
-              className="stat-pill stat-pill-diagnostic stat-pill-btn" 
-              onClick={() => setShowDiagnosticModal(true)}
-            >
+            <div className="stat-pill" style={{ background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A' }} title="Daily Goal">
               <span>🎯</span>
-              <span>Test</span>
-            </button>
-
-            <button 
-              type="button" 
-              className="stat-pill stat-pill-leaderboard stat-pill-btn" 
-              onClick={() => setShowLeaderboardModal(true)}
-            >
-              <span>🏆</span>
-              <span>Ranks</span>
-            </button>
+              <span>{Math.min(5, completedCount % 5 + 1)}/5 Goal</span>
+            </div>
 
             <div 
               className="user-avatar-btn" 
@@ -535,73 +577,33 @@ export default function App() {
 
         {/* ── CONTENT AREA (ROUTED SCREENS) ─────────────────────────────── */}
         <main className="content-area">
-          {/* 1. HOME DASHBOARD */}
+          {/* 1. HOME DASHBOARD (Screen 2 in Mockup) */}
           {screen === 'home' && (
-            <div className="dashboard-grid">
-              {/* TOP ROW: LEVEL PROGRESS, DAILY GOAL, STREAK */}
-              <div className="dash-hero-row">
+            <div className="dashboard-grid" style={{ maxWidth: '780px', margin: '0 auto' }}>
+              
+              {/* TOP ROW: STAT PILLS & LEVEL BANNER */}
+              <div className="dash-hero-row" style={{ gridTemplateColumns: '1fr' }}>
                 {/* Level Card with Sapphire Mascot */}
                 <div className="level-hero-card">
                   <div className="level-hero-info">
                     <span className="level-tag">
                       👑 Level {level} • {level >= 5 ? 'Diamond Orator' : level >= 3 ? 'Rising Speaker' : 'Foundation'}
                     </span>
-                    <h2 className="level-hero-title">Level {level} Progress</h2>
-                    <p className="level-hero-sub">{completedCount}/100 Challenges Mastered</p>
+                    <h2 className="level-hero-title">{levelXp} / 100 XP to Level {level + 1}</h2>
+                    <p className="level-hero-sub">{completedCount}/100 Speaking Challenges Mastered</p>
 
                     <div className="level-xp-bar-wrap">
                       <div className="level-xp-bar-bg">
                         <div className="level-xp-bar-fill" style={{ width: `${Math.min(100, Math.max(8, levelXp))}%` }} />
                       </div>
-                      <div className="level-xp-text">{levelXp} / 100 XP to Level {level + 1}</div>
                     </div>
                   </div>
 
-                  <Mascot state="crowned" size={110} />
-                </div>
-
-                {/* Daily Goal Card */}
-                <div className="stat-widget-card">
-                  <div className="stat-widget-head">
-                    <span className="stat-widget-label">Daily Goal</span>
-                    <span className="stat-widget-icon">🎯</span>
-                  </div>
-                  <div>
-                    <div className="stat-widget-val">{Math.min(5, completedCount % 5 + 1)} / 5</div>
-                    <div className="stat-widget-sub">Lessons completed today</div>
-                  </div>
-                  <div className="level-xp-bar-bg" style={{ marginTop: '0.6rem' }}>
-                    <div className="level-xp-bar-fill" style={{ width: `${((completedCount % 5 + 1) / 5) * 100}%`, background: 'var(--royal-violet)' }} />
-                  </div>
-                </div>
-
-                {/* Streak Card */}
-                <div className="stat-widget-card">
-                  <div className="stat-widget-head">
-                    <span className="stat-widget-label">Practice Streak</span>
-                    <span className="stat-widget-icon">🔥</span>
-                  </div>
-                  <div>
-                    <div className="stat-widget-val">{progress.streak} Days</div>
-                    <div className="stat-widget-sub">Daily speaking habit on fire!</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.6rem' }}>
-                    {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-                      <div 
-                        key={d} 
-                        style={{
-                          flex: 1,
-                          height: '6px',
-                          borderRadius: '999px',
-                          background: d <= (progress.streak || 1) ? '#F59E0B' : '#E2E8F0'
-                        }} 
-                      />
-                    ))}
-                  </div>
+                  <Mascot state="crowned" size={96} />
                 </div>
               </div>
 
-              {/* MIDDLE ROW: CONTINUE YOUR JOURNEY */}
+              {/* CONTINUE YOUR JOURNEY */}
               <div>
                 <div className="section-title-row">
                   <h3 className="section-title">
@@ -612,7 +614,7 @@ export default function App() {
                     type="button"
                     onClick={() => setScreen('map')}
                   >
-                    View All Quest Map →
+                    View Quest Map →
                   </button>
                 </div>
 
@@ -625,7 +627,7 @@ export default function App() {
                       </div>
                       <div className="journey-card-info">
                         <h3>Pronunciation Practice</h3>
-                        <p>Q#{nextOpen.id}: "{nextOpen.label}" • {nextOpen.focus}</p>
+                        <p>Q#{nextOpen.id}: "{nextOpen.label}" • {formatPhoneme(nextOpen.focus)}</p>
                       </div>
                     </div>
                     <button className="btn-3d btn-3d-primary btn-sm" type="button">
@@ -641,7 +643,7 @@ export default function App() {
                       </div>
                       <div className="journey-card-info">
                         <h3>Grammar Challenge</h3>
-                        <p>Level: {grammarLevel.toUpperCase()} • Daily Scenario Practice</p>
+                        <p>Level: {grammarLevel.toUpperCase()} • Daily Scenarios</p>
                       </div>
                     </div>
                     <button className="btn-3d btn-3d-gold btn-sm" type="button">
@@ -649,116 +651,80 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+
+                {/* Direct Mobile & Desktop Translator Quick Card */}
+                <div 
+                  className="journey-card" 
+                  onClick={() => setScreen('translate')}
+                  style={{ marginTop: '0.9rem', background: 'var(--bg-lavender)', borderColor: '#C7D2FE' }}
+                >
+                  <div className="journey-card-left">
+                    <div className="journey-icon-wrap" style={{ background: '#FFFFFF', border: '1px solid #C7D2FE' }}>
+                      🔄
+                    </div>
+                    <div className="journey-card-info">
+                      <h3 style={{ color: 'var(--royal-violet-deep)' }}>Voice Translator &amp; AI Interview</h3>
+                      <p style={{ color: 'var(--royal-violet)' }}>Speak in Hindi ➔ Get fluent English + interview analysis</p>
+                    </div>
+                  </div>
+                  <button className="btn-3d btn-3d-primary btn-sm" type="button">
+                    Open ➔
+                  </button>
+                </div>
               </div>
 
-              {/* BOTTOM ROW: TODAY'S PLAN & RECENT PERFORMANCE */}
-              <div className="dash-bottom-row">
-                {/* Today's Plan Checklist */}
-                <div className="today-plan-card">
-                  <h3 className="section-title">
-                    <span>📋</span> Today's Action Plan
-                  </h3>
-                  
-                  <div className="plan-item-list">
-                    <div className="plan-item">
-                      <div className="plan-item-left">
-                        <div className="plan-item-icon">🎯</div>
-                        <div>
-                          <div className="plan-item-title">Practice 5 pronunciation words</div>
-                          <div className="plan-item-reward">+50 XP Reward</div>
-                        </div>
+              {/* TODAY'S PLAN CHECKLIST */}
+              <div className="today-plan-card">
+                <h3 className="section-title">
+                  <span>📋</span> Today's Action Plan
+                </h3>
+                
+                <div className="plan-item-list">
+                  <div className="plan-item">
+                    <div className="plan-item-left">
+                      <div className="plan-item-icon">🎯</div>
+                      <div>
+                        <div className="plan-item-title">Practice 5 pronunciation words</div>
+                        <div className="plan-item-reward">+50 XP Reward</div>
                       </div>
-                      <div className="plan-item-progress">{Math.min(5, completedCount % 5 + 1)} / 5</div>
                     </div>
-
-                    <div className="plan-item">
-                      <div className="plan-item-left">
-                        <div className="plan-item-icon">📝</div>
-                        <div>
-                          <div className="plan-item-title">Complete 1 grammar sentence quiz</div>
-                          <div className="plan-item-reward">+40 XP Reward</div>
-                        </div>
-                      </div>
-                      <div className="plan-item-progress">{grammarResult ? '1/1 ✓' : '0/1'}</div>
-                    </div>
-
-                    <div className="plan-item">
-                      <div className="plan-item-left">
-                        <div className="plan-item-icon">🎙️</div>
-                        <div>
-                          <div className="plan-item-title">Take 15-question diagnostic test</div>
-                          <div className="plan-item-reward">+100 XP Reward</div>
-                        </div>
-                      </div>
-                      <button 
-                        className="btn-3d btn-3d-primary btn-sm"
-                        type="button"
-                        onClick={() => setShowDiagnosticModal(true)}
-                      >
-                        Start Test
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Skill Matrix / Radar Breakdown */}
-                <div className="performance-card">
-                  <h3 className="section-title">
-                    <span>📊</span> Speaking Skill Matrix
-                  </h3>
-
-                  {/* Clean SVG Radar Spider Chart */}
-                  <div className="radar-chart-container">
-                    <RadarChart matrix={skillsMatrix} />
+                    <div className="plan-item-progress">{Math.min(5, completedCount % 5 + 1)} / 5</div>
                   </div>
 
-                  <div className="skill-bars-list">
-                    <div className="skill-mini-bar">
-                      <div className="skill-mini-bar-head">
-                        <span>Pronunciation</span>
-                        <strong style={{ color: 'var(--royal-violet)' }}>{skillsMatrix.pronunciation}%</strong>
-                      </div>
-                      <div className="skill-mini-bar-track">
-                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.pronunciation}%` }} />
+                  <div className="plan-item">
+                    <div className="plan-item-left">
+                      <div className="plan-item-icon">📝</div>
+                      <div>
+                        <div className="plan-item-title">Complete 1 grammar sentence challenge</div>
+                        <div className="plan-item-reward">+40 XP Reward</div>
                       </div>
                     </div>
+                    <div className="plan-item-progress">{grammarResult ? '1/1 ✓' : '0/1'}</div>
+                  </div>
 
-                    <div className="skill-mini-bar">
-                      <div className="skill-mini-bar-head">
-                        <span>Clarity</span>
-                        <strong style={{ color: 'var(--emerald)' }}>{skillsMatrix.clarity}%</strong>
-                      </div>
-                      <div className="skill-mini-bar-track">
-                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.clarity}%`, background: 'var(--emerald)' }} />
-                      </div>
-                    </div>
-
-                    <div className="skill-mini-bar">
-                      <div className="skill-mini-bar-head">
-                        <span>Fluency</span>
-                        <strong style={{ color: 'var(--accent-cyan)' }}>{skillsMatrix.fluency}%</strong>
-                      </div>
-                      <div className="skill-mini-bar-track">
-                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.fluency}%`, background: 'var(--accent-cyan)' }} />
+                  <div className="plan-item">
+                    <div className="plan-item-left">
+                      <div className="plan-item-icon">🎯</div>
+                      <div>
+                        <div className="plan-item-title">15-Question Placement Diagnostic Test</div>
+                        <div className="plan-item-reward">+100 XP Reward</div>
                       </div>
                     </div>
-
-                    <div className="skill-mini-bar">
-                      <div className="skill-mini-bar-head">
-                        <span>Confidence</span>
-                        <strong style={{ color: 'var(--gold)' }}>{skillsMatrix.confidence}%</strong>
-                      </div>
-                      <div className="skill-mini-bar-track">
-                        <div className="skill-mini-bar-fill" style={{ width: `${skillsMatrix.confidence}%`, background: 'var(--gold)' }} />
-                      </div>
-                    </div>
+                    <button 
+                      className="btn-3d btn-3d-primary btn-sm"
+                      type="button"
+                      onClick={() => setShowDiagnosticModal(true)}
+                    >
+                      Take Test
+                    </button>
                   </div>
                 </div>
               </div>
+
             </div>
           )}
 
-          {/* 2. QUEST MAP (Stepping Stones Path Journey) */}
+          {/* 2. QUEST MAP (Stepping Stones Path Journey - Screen 3 in Mockup) */}
           {screen === 'map' && (
             <div className="quest-map-view">
               {/* STAGE SELECTOR TABS */}
@@ -807,7 +773,7 @@ export default function App() {
 
                 return (
                   <div className="stepping-stones-container">
-                    {currentStage.questions.map((q, idx) => {
+                    {currentStage.questions.map((q) => {
                       const best = progress.completed[q.id]?.bestScore || 0;
                       const unlocked = isUnlocked(q, progress);
                       const isCurrent = q.id === nextOpen.id;
@@ -858,7 +824,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 3. PRONUNCIATION PRACTICE SCREEN */}
+          {/* 3. PRONUNCIATION PRACTICE SCREEN (Screen 4 in Mockup) */}
           {screen === 'practice' && activeLevel && (
             <div className="practice-container">
               <button 
@@ -876,15 +842,15 @@ export default function App() {
                 </span>
 
                 <div className="target-word-display">
-                  "{activeLevel.target}"
+                  {activeLevel.target}
                 </div>
 
-                <div className="target-ipa-display">
-                  /{activeLevel.focus}/
+                <div className="target-ipa-display" title="English & Hindi Phonetic Guide">
+                  /{activeLevel.focus}/ • {formatPhoneme(activeLevel.focus)}
                 </div>
 
                 <p className="target-focus-hint">
-                  💡 Listen to the target pronunciation, then speak clearly into your mic.
+                  Listen first, then say the word clearly into your microphone.
                 </p>
 
                 <div>
@@ -893,7 +859,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Microphone Record Area */}
+                {/* Microphone Record Area with Auto-Silence */}
                 <div className="mic-action-area">
                   <button 
                     type="button"
@@ -908,14 +874,14 @@ export default function App() {
                   <div className="mic-timer-label">
                     {status === 'recording' ? (
                       <span style={{ color: 'var(--coral)', fontWeight: 800 }}>
-                        🔴 Recording ({recordingSeconds}s) — Click to Submit
+                        🔴 Recording ({recordingSeconds}s) — Auto-stops on pause
                       </span>
                     ) : status === 'processing' ? (
                       <span style={{ color: 'var(--royal-violet)', fontWeight: 800 }}>
-                        ⏳ AI Speech Coach analyzing phonemes...
+                        ⏳ AI analyzing pronunciation sounds...
                       </span>
                     ) : (
-                      'Tap Microphone & Speak Word'
+                      'Tap to Speak'
                     )}
                   </div>
                 </div>
@@ -936,7 +902,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 4. PRONUNCIATION RESULT SCREEN */}
+          {/* 4. PRONUNCIATION RESULT SCREEN (Screen 5 in Mockup - Clean & Focused) */}
           {screen === 'result' && result && (
             <div className="result-container">
               <button 
@@ -950,60 +916,42 @@ export default function App() {
 
               <div className="result-hero-card">
                 {/* Celebratory Mascot */}
-                <div style={{ marginBottom: '1rem' }}>
-                  <Mascot state={result.passed ? 'celebrating' : 'encouraging'} size={110} />
-                </div>
-
-                {/* Score Circle */}
-                <div className={`result-score-circle ${result.passed ? 'score-pass' : 'score-fail'}`}>
-                  <span className="score-number">{result.score || 0}%</span>
-                  <span className="score-label">{result.passed ? 'Passed 🎉' : 'Needs Practice 💪'}</span>
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <Mascot state={result.passed ? 'celebrating' : 'encouraging'} size={105} />
                 </div>
 
                 <h2 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-main)', marginBottom: '0.2rem' }}>
-                  {result.passed ? 'Outstanding Pronunciation!' : 'Good Effort! Keep Practicing'}
+                  {result.passed ? 'Good Job! Passed 🎉' : 'Good Effort! Keep Practicing 💪'}
                 </h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
                   Target word: <strong>"{activeLevel?.target}"</strong>
                 </p>
 
-                {/* Granular Metrics Grid */}
-                <div className="metrics-grid">
-                  <div className="metric-card">
-                    <div className="metric-card-val">{result.score || 0}%</div>
-                    <div className="metric-card-lbl">Pronunciation</div>
-                  </div>
-                  <div className="metric-card">
-                    <div className="metric-card-val">{Math.max(60, Math.round((result.score || 0) * 0.95))}%</div>
-                    <div className="metric-card-lbl">Clarity</div>
-                  </div>
-                  <div className="metric-card">
-                    <div className="metric-card-val">{Math.max(55, Math.round((result.score || 0) * 0.92))}%</div>
-                    <div className="metric-card-lbl">Fluency</div>
-                  </div>
-                  <div className="metric-card">
-                    <div className="metric-card-val">{result.passed ? '90%' : '65%'}</div>
-                    <div className="metric-card-lbl">Confidence</div>
-                  </div>
+                {/* Score Badge */}
+                <div className={`result-score-circle ${result.passed ? 'score-pass' : 'score-fail'}`} style={{ marginTop: '1rem' }}>
+                  <span className="score-number">{result.score || 0}%</span>
+                  <span className="score-label">{result.passed ? 'Passed ✓' : 'Needs Practice'}</span>
                 </div>
 
-                {/* Phoneme Level Comparison Boxes */}
+                {/* Phoneme Level Breakdown Boxes (English + Hindi notation) */}
                 {result.pronunciation?.comparison?.length > 0 && (
-                  <div style={{ marginTop: '1.25rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                      Phoneme Sound Breakdown
+                  <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.6rem' }}>
+                      Phoneme Sound Breakdown (English &amp; Hindi)
                     </div>
                     <div className="phoneme-boxes-wrap">
                       {result.pronunciation.comparison.map((item, idx) => {
                         const isCorrect = item.type === 'correct' || item.type === 'accent_match';
                         const isClose = item.type === 'close';
                         const boxClass = isCorrect ? 'phoneme-correct' : isClose ? 'phoneme-close' : 'phoneme-wrong';
+                        const expHuman = formatPhoneme(item.expected);
+                        const spkHuman = item.spoken ? formatPhoneme(item.spoken) : '—';
 
                         return (
-                          <div key={idx} className={`phoneme-box ${boxClass}`}>
-                            <span>{item.expected || item.spoken || '?'}</span>
-                            <small style={{ fontSize: '0.65rem', opacity: 0.8 }}>
-                              {isCorrect ? '✓' : isClose ? '≈' : '✗'}
+                          <div key={idx} className={`phoneme-box ${boxClass}`} style={{ minWidth: '72px' }}>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 800 }}>{expHuman || '?'}</span>
+                            <small style={{ fontSize: '0.7rem', marginTop: '0.2rem', opacity: 0.85 }}>
+                              {isCorrect ? '✓ Match' : isClose ? `≈ heard ${spkHuman}` : `✗ heard ${spkHuman}`}
                             </small>
                           </div>
                         );
@@ -1012,15 +960,25 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Feedback Box */}
+                {/* AI Coach Feedback Box */}
                 <div className="feedback-box" style={{ marginTop: '1.25rem' }}>
                   <h4><span>💬</span> AI Coach Feedback</h4>
-                  <p>
-                    {result.pronunciation?.feedback?.summary || 
-                     (result.passed 
-                       ? 'All target phonemes matched the expected sounds. Great articulation!' 
-                       : 'Focus on pronouncing the highlighted sounds clearly without rushing.')}
+                  <p style={{ lineHeight: 1.6 }}>
+                    {humanizeFeedback(
+                      result.pronunciation?.feedback?.summary || 
+                      (result.passed 
+                        ? 'All target sounds matched standard English pronunciation clearly.' 
+                        : 'Focus on pronouncing the highlighted sounds clearly without rushing.')
+                    )}
                   </p>
+
+                  {result.pronunciation?.feedback?.improvements?.length > 0 && (
+                    <ul style={{ marginTop: '0.6rem', paddingLeft: '1.2rem', fontSize: '0.85rem', color: 'var(--royal-violet-deep)' }}>
+                      {result.pronunciation.feedback.improvements.map((tip, idx) => (
+                        <li key={idx} style={{ marginBottom: '0.3rem' }}>{humanizeFeedback(tip)}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
@@ -1043,14 +1001,14 @@ export default function App() {
                     }}
                     style={{ flex: 1.2 }}
                   >
-                    Next Challenge ➔
+                    Next Word ➔
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 5. GRAMMAR CHALLENGE SCREEN */}
+          {/* 5. GRAMMAR CHALLENGE SCREEN (Screen 6 in Mockup) */}
           {screen === 'grammar' && (
             <div className="practice-container">
               <button 
@@ -1078,7 +1036,7 @@ export default function App() {
 
                 {grammarLoading ? (
                   <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>
-                    ⏳ Fetching grammar challenge...
+                    ⏳ Loading grammar challenge...
                   </div>
                 ) : grammarSentence ? (
                   <div>
@@ -1086,9 +1044,9 @@ export default function App() {
                       Scenario: {grammarSentence.scenario}
                     </span>
 
-                    <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: '14px', padding: '1rem', margin: '1rem 0' }}>
+                    <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: '14px', padding: '1.2rem', margin: '1rem 0' }}>
                       <div style={{ color: '#BE123C', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase' }}>Incorrect Sentence</div>
-                      <div style={{ fontSize: '1.3rem', fontWeight: 800, color: '#BE123C', marginTop: '0.2rem' }}>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#BE123C', marginTop: '0.2rem' }}>
                         "{grammarSentence.wrong}"
                       </div>
                     </div>
@@ -1108,7 +1066,7 @@ export default function App() {
                       </button>
 
                       <div className="mic-timer-label">
-                        {status === 'recording' ? 'Recording answer... Click to Stop' : 'Tap to Speak Corrected Sentence'}
+                        {status === 'recording' ? `Recording (${recordingSeconds}s) — Auto-stops on pause` : 'Tap to Speak Corrected Sentence'}
                       </div>
                     </div>
                   </div>
@@ -1134,7 +1092,7 @@ export default function App() {
                       onClick={loadNextGrammar}
                       style={{ marginTop: '1rem' }}
                     >
-                      Next Grammar Challenge ➔
+                      Next Challenge ➔
                     </button>
                   </div>
                 )}
@@ -1144,7 +1102,7 @@ export default function App() {
             </div>
           )}
 
-          {/* 6. TRANSLATOR & AI INTERVIEW SCREEN */}
+          {/* 6. TRANSLATOR & AI INTERVIEW SCREEN (Screen 7 in Mockup) */}
           {screen === 'translate' && (
             <div className="practice-container">
               <button 
@@ -1170,7 +1128,7 @@ export default function App() {
                     className={`btn-3d ${translateMode === 'interview' ? 'btn-3d-primary' : 'btn-3d-white'} btn-sm`}
                     onClick={() => { setTranslateMode('interview'); setTransTranscript(''); }}
                   >
-                    🎙️ AI Interview Simulator
+                    🎙️ AI Interview Practice
                   </button>
                 </div>
 
@@ -1189,7 +1147,7 @@ export default function App() {
                         {status === 'recording' ? '⏹' : '🎙️'}
                       </button>
                       <div className="mic-timer-label">
-                        {status === 'recording' ? 'Listening in Hindi... Tap to Translate' : 'Tap to Speak in Hindi'}
+                        {status === 'recording' ? `Listening in Hindi (${recordingSeconds}s) — Auto-stops on pause` : 'Tap to Speak in Hindi'}
                       </div>
                     </div>
 
@@ -1253,7 +1211,7 @@ export default function App() {
                         {status === 'recording' ? '⏹' : '🎙️'}
                       </button>
                       <div className="mic-timer-label">
-                        {status === 'recording' ? 'Answering Question... Tap to Submit' : 'Tap to Answer Question in Hindi'}
+                        {status === 'recording' ? `Answering Question (${recordingSeconds}s) — Auto-stops on pause` : 'Tap to Answer in Hindi'}
                       </div>
                     </div>
 
@@ -1291,12 +1249,12 @@ export default function App() {
 
           <div className="bottom-motivation-stats">
             <span>Practiced: <strong>{completedCount} words</strong></span>
-            <span>Accuracy: <strong>{skillsMatrix.pronunciation}%</strong></span>
             <span>Total XP: <strong>{progress.xp}</strong></span>
+            <span>Streak: <strong>{progress.streak}d</strong></span>
           </div>
         </div>
 
-        {/* ── MOBILE BOTTOM NAVIGATION BAR ──────────────────────────────── */}
+        {/* ── MOBILE BOTTOM NAVIGATION BAR (Prominent Translator Tab - Screen 7) ── */}
         <div className="mobile-bottom-nav">
           <div className="mobile-nav-items">
             <button 
@@ -1325,9 +1283,23 @@ export default function App() {
                 if (nextOpen) startLevel(nextOpen);
                 else setScreen('map');
               }}
-              title="Practice Now"
+              title="Practice Pronunciation"
             >
               🎙️
+            </button>
+
+            <button 
+              className={`mobile-nav-btn ${screen === 'translate' ? 'active' : ''}`}
+              type="button"
+              onClick={() => {
+                setTransTranscript('');
+                setTransTranslation('');
+                setTransAudioBase64('');
+                setScreen('translate');
+              }}
+            >
+              <span className="mobile-nav-icon">🔄</span>
+              <span>Translate</span>
             </button>
 
             <button 
@@ -1366,7 +1338,7 @@ export default function App() {
         />
       )}
 
-      {/* ── STUDENT LEADERBOARD MODAL ──────────────────────────────────── */}
+      {/* ── STUDENT LEADERBOARD MODAL (Screen 9 in Mockup) ─────────────── */}
       {showLeaderboardModal && (
         <StudentLeaderboardModal 
           currentUser={user} 
@@ -1374,7 +1346,7 @@ export default function App() {
         />
       )}
 
-      {/* ── ACHIEVEMENTS MODAL ─────────────────────────────────────────── */}
+      {/* ── ACHIEVEMENTS MODAL (Screen 10 in Mockup) ───────────────────── */}
       {showAchievementsModal && (
         <AchievementsModal
           progress={progress}
@@ -1383,7 +1355,7 @@ export default function App() {
         />
       )}
 
-      {/* ── 15-QUESTION DIAGNOSTIC ASSESSMENT MODAL ────────────────────── */}
+      {/* ── 15-QUESTION DIAGNOSTIC ASSESSMENT MODAL (Screen 8 in Mockup) ── */}
       {showDiagnosticModal && (
         <DiagnosticModal 
           user={user}
@@ -1393,57 +1365,6 @@ export default function App() {
         />
       )}
     </div>
-  );
-}
-
-// ── SVG RADAR SPIDER CHART FOR 5 SKILLS ─────────────────────────────────────
-function RadarChart({ matrix }) {
-  const size = 160;
-  const center = size / 2;
-  const maxRadius = 60;
-  const skills = [
-    { key: 'pronunciation', label: 'Pronunciation' },
-    { key: 'clarity', label: 'Clarity' },
-    { key: 'fluency', label: 'Fluency' },
-    { key: 'vocabulary', label: 'Vocabulary' },
-    { key: 'confidence', label: 'Confidence' }
-  ];
-
-  const total = skills.length;
-  const angleStep = (Math.PI * 2) / total;
-
-  const points = skills.map((s, i) => {
-    const val = (matrix[s.key] || 70) / 100;
-    const r = val * maxRadius;
-    const angle = i * angleStep - Math.PI / 2;
-    const x = center + r * Math.cos(angle);
-    const y = center + r * Math.sin(angle);
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {/* Background Web Rings */}
-      {[0.33, 0.66, 1].map((scale, i) => {
-        const ringPoints = skills.map((_, idx) => {
-          const r = scale * maxRadius;
-          const angle = idx * angleStep - Math.PI / 2;
-          return `${center + r * Math.cos(angle)},${center + r * Math.sin(angle)}`;
-        }).join(' ');
-        return <polygon key={i} points={ringPoints} fill="none" stroke="#E2E8F0" strokeWidth="1" />;
-      })}
-
-      {/* Axis Lines */}
-      {skills.map((_, idx) => {
-        const angle = idx * angleStep - Math.PI / 2;
-        const x = center + maxRadius * Math.cos(angle);
-        const y = center + maxRadius * Math.sin(angle);
-        return <line key={idx} x1={center} y1={center} x2={x} y2={y} stroke="#E2E8F0" strokeWidth="1" />;
-      })}
-
-      {/* Dynamic Skill Shape */}
-      <polygon points={points} fill="rgba(99, 102, 241, 0.25)" stroke="#6366F1" strokeWidth="2.5" />
-    </svg>
   );
 }
 
@@ -1669,23 +1590,23 @@ function StudentLeaderboardModal({ currentUser, onClose }) {
   );
 }
 
-// ── 15-QUESTION DIAGNOSTIC ASSESSMENT MODAL ─────────────────────────────────
+// ── 15-QUESTION DIAGNOSTIC ASSESSMENT MODAL (Screen 8 in Mockup) ─────────────
 const FULL_DIAGNOSTIC_15 = [
-  { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', hint: 'Say "map" — press lips together firmly', difficulty: 'easy' },
-  { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', hint: 'Say "ball" — pop lips apart for B', difficulty: 'easy' },
-  { sound: 's', display_name: 'S Sound', word: 'sun', pronounce: 'sʌn', skill: 'consonants', hint: 'Say "sun" — smooth hissing S sound', difficulty: 'easy' },
-  { sound: 'sh', display_name: 'SH Sound', word: 'ship', pronounce: 'ʃɪp', skill: 'sh_confusion', hint: 'Say "ship" — lips forward for SH', difficulty: 'easy' },
-  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', hint: 'Say "red" — curl tongue back for R', difficulty: 'easy' },
-  { sound: 'v', display_name: 'V Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', hint: 'Say "very" — upper teeth touch lower lip', difficulty: 'medium' },
-  { sound: 'w', display_name: 'W Sound', word: 'water', pronounce: 'ˈwɔːtər', skill: 'vw_confusion', hint: 'Say "water" — round lips into a circle for W', difficulty: 'medium' },
-  { sound: 'th', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', hint: 'Say "think" — tongue tip between teeth', difficulty: 'medium' },
-  { sound: 'dh', display_name: 'TH Sound (Voiced)', word: 'this', pronounce: 'ðɪs', skill: 'th_sounds', hint: 'Say "this" — voiced TH, tongue between teeth', difficulty: 'medium' },
-  { sound: 'l', display_name: 'L Sound', word: 'little', pronounce: 'ˈlɪtəl', skill: 'rl_confusion', hint: 'Say "little" — tongue tip touches roof of mouth', difficulty: 'medium' },
-  { sound: 'th', display_name: 'TH + R Blend', word: 'through', pronounce: 'θruː', skill: 'th_sounds', hint: 'Say "through" — smooth transition from TH to R', difficulty: 'hard' },
-  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', hint: 'Say "world" — round lips for W, curl for R', difficulty: 'hard' },
-  { sound: 'th', display_name: 'TH in Context', word: 'weather', pronounce: 'ˈwɛðər', skill: 'th_sounds', hint: 'Say "weather" — voiced TH clearly in middle', difficulty: 'hard' },
-  { sound: 'r', display_name: 'R + TH Blend', word: 'thirty', pronounce: 'ˈθɜːrti', skill: 'rl_confusion', hint: 'Say "thirty" — TH first, then clear R sound', difficulty: 'hard' },
-  { sound: 'th', display_name: 'TH in Multi-Syllable', word: 'therefore', pronounce: 'ˈðɛərfɔːr', skill: 'th_sounds', hint: 'Say "therefore" — voiced TH start, clear R', difficulty: 'hard' }
+  { sound: 'm', display_name: 'M Sound', word: 'map', pronounce: 'mæp', skill: 'consonants', difficulty: 'easy' },
+  { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', difficulty: 'easy' },
+  { sound: 's', display_name: 'S Sound', word: 'sun', pronounce: 'sʌn', skill: 'consonants', difficulty: 'easy' },
+  { sound: 'sh', display_name: 'SH Sound', word: 'ship', pronounce: 'ʃɪp', skill: 'sh_confusion', difficulty: 'easy' },
+  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', difficulty: 'easy' },
+  { sound: 'v', display_name: 'V Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', difficulty: 'medium' },
+  { sound: 'w', display_name: 'W Sound', word: 'water', pronounce: 'ˈwɔːtər', skill: 'vw_confusion', difficulty: 'medium' },
+  { sound: 'th', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', difficulty: 'medium' },
+  { sound: 'dh', display_name: 'TH Sound (Voiced)', word: 'this', pronounce: 'ðɪs', skill: 'th_sounds', difficulty: 'medium' },
+  { sound: 'l', display_name: 'L Sound', word: 'little', pronounce: 'ˈlɪtəl', skill: 'rl_confusion', difficulty: 'medium' },
+  { sound: 'th', display_name: 'TH + R Blend', word: 'through', pronounce: 'θruː', skill: 'th_sounds', difficulty: 'hard' },
+  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', difficulty: 'hard' },
+  { sound: 'th', display_name: 'TH in Context', word: 'weather', pronounce: 'ˈwɛðər', skill: 'th_sounds', difficulty: 'hard' },
+  { sound: 'r', display_name: 'R + TH Blend', word: 'thirty', pronounce: 'ˈθɜːrti', skill: 'rl_confusion', difficulty: 'hard' },
+  { sound: 'th', display_name: 'TH Multi-Syllable', word: 'therefore', pronounce: 'ˈðɛərfɔːr', skill: 'th_sounds', difficulty: 'hard' }
 ];
 
 function DiagnosticModal({ user, progress, setProgress, onClose }) {
@@ -1757,12 +1678,13 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         }
         const rms = Math.sqrt(sumSq / dataArray.length) * 100;
 
-        if (rms > 12) {
+        if (rms > 8) {
           speechDetected = true;
           silenceStartTime = null;
         } else if (speechDetected) {
-          if (!silenceStartTime) silenceStartTime = Date.now();
-          else if (Date.now() - silenceStartTime > 1400) {
+          if (!silenceStartTime) {
+            silenceStartTime = Date.now();
+          } else if (Date.now() - silenceStartTime > 1200) {
             silenceDetectRef.current = null;
             stopAndEvaluate();
             return;
@@ -1787,7 +1709,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
       timerRef.current = setInterval(() => {
         setRecordingSeconds((s) => {
-          if (s >= 7) {
+          if (s >= 6) {
             stopAndEvaluate();
             return s;
           }
@@ -1837,14 +1759,16 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       let calcScore = 0;
       let detected = false;
       let spokenWord = '';
+      let diagnosisNote = '';
 
-      // 1. Evaluate using gold-standard /check/{word} engine (EXACT same as normal pronunciation)
+      // 1. Evaluate using gold-standard checkPronunciation engine
       try {
         const checkRes = await checkPronunciation(currentQ.word, audioBlob);
         if (checkRes && typeof checkRes.score !== 'undefined') {
           calcScore = normalizeScore(checkRes.score);
           detected = calcScore >= 60;
           spokenWord = checkRes.spoken_word || (checkRes.spoken && checkRes.spoken.join('')) || currentQ.word;
+          diagnosisNote = checkRes.feedback?.summary || (calcScore >= 70 ? 'Clear articulation' : 'Sound variations heard');
         }
       } catch {
         // Fallback: try evaluateDiagnosticSound
@@ -1854,6 +1778,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             calcScore = normalizeScore(diagRes.score);
             detected = diagRes.detected || calcScore >= 60;
             spokenWord = diagRes.spoken_word || currentQ.word;
+            diagnosisNote = calcScore >= 70 ? 'Sound detected clearly' : 'Needs attention';
           }
         } catch {
           // Client-side Web Speech recognition fallback for standalone deployment
@@ -1863,29 +1788,35 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             if (spoken === targetWord || spoken.includes(targetWord)) {
               calcScore = 92;
               detected = true;
+              diagnosisNote = 'Target word matched accurately';
             } else if (targetWord.startsWith(spoken.slice(0, 3)) || spoken.startsWith(targetWord.slice(0, 3))) {
               calcScore = 76;
               detected = true;
+              diagnosisNote = `Close match — heard '${spoken}'`;
             } else {
-              calcScore = 25; // wrong word
+              calcScore = 25;
               detected = false;
+              diagnosisNote = `Heard '${spoken}' instead of '${targetWord}'`;
             }
           } else {
             calcScore = 0;
             detected = false;
+            diagnosisNote = 'No speech detected';
           }
         }
       }
 
       const evalData = {
+        qNum: currentIndex + 1,
         display_name: currentQ.display_name,
         sound: currentQ.sound,
         word: currentQ.word,
         pronounce: currentQ.pronounce,
         skill: currentQ.skill || 'consonants',
-        score: calcScore, // Always normalized 0 to 100
+        score: calcScore, // 0 - 100
         detected: detected,
         spoken_word: spokenWord,
+        diagnosis_note: diagnosisNote,
         spoken: spokenWord ? [spokenWord] : []
       };
 
@@ -1946,11 +1877,11 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
     const SKILL_LABELS = {
       consonants: 'Consonant Clarity',
-      th_sounds: 'TH Sound Precision',
-      vw_confusion: 'V vs W Distinction',
-      rl_confusion: 'R vs L Distinction',
-      sh_confusion: 'SH Sound Mastery',
-      vowels: 'Vowel Accuracy'
+      th_sounds: 'TH Sounds (थ/द)',
+      vw_confusion: 'V vs W Distinction (व/वा)',
+      rl_confusion: 'R vs L Distinction (र/ल)',
+      sh_confusion: 'SH Sound (श/स)',
+      vowels: 'Vowel Precision'
     };
 
     const strengths = Object.entries(pronunciation_scores)
@@ -1963,24 +1894,25 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
     const recommended_learning_path = [];
     if (pronunciation_scores.th_sounds != null && pronunciation_scores.th_sounds < 70) {
-      recommended_learning_path.push('Practice TH sound placement — tongue tip between teeth');
+      recommended_learning_path.push('Practice TH (थ/द) sound placement with tongue between teeth');
     }
     if (pronunciation_scores.vw_confusion != null && pronunciation_scores.vw_confusion < 70) {
-      recommended_learning_path.push('Master V vs W lip articulation in Stage 2');
+      recommended_learning_path.push('Master V (teeth on lip) vs W (circle lips) in Stage 2');
     }
     if (pronunciation_scores.rl_confusion != null && pronunciation_scores.rl_confusion < 70) {
       recommended_learning_path.push('Refine R vs L liquid tongue curls in Stage 3');
     }
     if (recommended_learning_path.length === 0) {
-      recommended_learning_path.push('Progress through Stage 2 & 3 speaking quests');
-      recommended_learning_path.push('Practice complex blend words for full fluency');
+      recommended_learning_path.push('Progress through Stage 2 & 3 speaking challenges');
+      recommended_learning_path.push('Practice multi-syllabic rhythm for complete fluency');
     }
 
     return {
       overall_score,
       pronunciation_scores,
-      strengths: strengths.length ? strengths : ['Basic Sound Articulation'],
-      weaknesses: weaknesses.length ? weaknesses : ['Consonant Clarity'],
+      all_question_results: allResults,
+      strengths: strengths.length ? strengths : ['Basic Sound Recognition'],
+      weaknesses: weaknesses.length ? weaknesses : ['Consonant Articulation'],
       recommended_learning_path
     };
   }
@@ -2011,22 +1943,12 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     onClose();
   }
 
-  function listenDiagnosticTarget() {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
-    const utterance = new SpeechSynthesisUtterance(currentQ.word);
-    utterance.lang = 'en-IN';
-    utterance.rate = 0.85;
-    window.speechSynthesis.speak(utterance);
-  }
-
   const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
   const progressPct = questions.length > 0 ? Math.round(((currentIndex) / questions.length) * 100) : 0;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px' }}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: status === 'report' ? '720px' : '520px' }}>
         <button className="close-modal-btn" type="button" onClick={onClose}>✕</button>
 
         <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
@@ -2038,6 +1960,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
           </p>
         </div>
 
+        {/* ── DETAILED REPORT VIEW (Correction 6) ── */}
         {status === 'report' && report ? (
           <div>
             <div style={{ background: 'var(--bg-lavender)', border: '1.5px solid #C7D2FE', borderRadius: '20px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
@@ -2045,13 +1968,16 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               <div style={{ fontSize: '2.8rem', fontWeight: 900, color: report.overall_score >= 70 ? 'var(--emerald-dark)' : 'var(--gold-dark)', margin: '0.2rem 0' }}>
                 {report.overall_score}%
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 700 }}>
-                {report.overall_score >= 85 ? '🌟 Advanced Pronunciation Mastery' : report.overall_score >= 65 ? '👍 Intermediate Communication Skills' : '🎯 Foundation Level — Room for Growth'}
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 800 }}>
+                {report.overall_score >= 85 ? '🌟 Advanced Pronunciation Mastery' : report.overall_score >= 65 ? '👍 Intermediate Communication Skills' : '🎯 Foundation Level — Recommended Stage 1'}
               </div>
             </div>
 
             {/* Skill Breakdown */}
             <div style={{ marginBottom: '1.25rem' }}>
+              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                Phoneme Skill Breakdown
+              </h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
                 {Object.entries(report.pronunciation_scores || {}).map(([skill, val]) => (
                   <div key={skill} style={{ background: 'var(--bg-surface-subtle)', padding: '0.6rem 0.8rem', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
@@ -2067,6 +1993,41 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               </div>
             </div>
 
+            {/* Detailed Per-Question Breakdown List (Correction 6) */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                Detailed Question-by-Question Results ({results.length}/15)
+              </h4>
+              <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '14px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)', textAlign: 'left' }}>
+                      <th style={{ padding: '0.5rem 0.75rem' }}>Q#</th>
+                      <th style={{ padding: '0.5rem 0.75rem' }}>Target Word</th>
+                      <th style={{ padding: '0.5rem 0.75rem' }}>Target Sound</th>
+                      <th style={{ padding: '0.5rem 0.75rem' }}>Heard / Note</th>
+                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: r.score >= 70 ? 'transparent' : '#FFF1F2' }}>
+                        <td style={{ padding: '0.5rem 0.75rem', fontWeight: 800 }}>{i + 1}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', fontWeight: 800, color: 'var(--royal-violet-deep)' }}>"{r.word}"</td>
+                        <td style={{ padding: '0.5rem 0.75rem' }}>{formatPhoneme(r.sound)}</td>
+                        <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-secondary)' }}>
+                          {r.diagnosis_note || (r.spoken_word ? `Heard "${r.spoken_word}"` : 'Clear')}
+                        </td>
+                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 800, color: r.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                          {r.score}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* Actions */}
             <div style={{ display: 'flex', gap: '0.8rem' }}>
               <button 
@@ -2075,7 +2036,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
                 type="button" 
                 style={{ flex: 1 }}
               >
-                🚀 Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
+                🚀 Apply Placement &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
               </button>
               <button onClick={onClose} className="btn-3d btn-3d-white" type="button">
                 Done
@@ -2083,6 +2044,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             </div>
           </div>
         ) : (
+          /* ── QUESTION TEST VIEW (Screen 8 in Mockup - Clean, No Hints) ── */
           <div>
             {/* Progress */}
             <div style={{ marginBottom: '1.25rem' }}>
@@ -2095,28 +2057,23 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               </div>
             </div>
 
-            {/* Word Card */}
-            <div style={{ background: 'var(--bg-surface-subtle)', border: '1px solid var(--border-light)', borderRadius: '20px', padding: '1.75rem', textAlign: 'center', marginBottom: '1.25rem' }}>
-              <span className="practice-level-badge">{currentQ.display_name || currentQ.skill}</span>
-              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--text-main)', margin: '0.4rem 0' }}>
-                "{currentQ.word}"
-              </div>
-              <div style={{ color: 'var(--royal-violet)', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-                /{currentQ.pronounce || currentQ.sound}/
-              </div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                💡 {currentQ.hint || `Speak "${currentQ.word}" clearly into your microphone.`}
+            {/* Word Card (No hints/Listen button - Pure test format) */}
+            <div style={{ background: 'var(--bg-surface-subtle)', border: '1.5px solid var(--border-light)', borderRadius: '20px', padding: '2rem 1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                Say the word shown below:
               </p>
+              
+              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: 'var(--text-main)', margin: '0.4rem 0', letterSpacing: '-0.02em' }}>
+                {currentQ.word}
+              </div>
+              
+              <div style={{ color: 'var(--royal-violet)', fontFamily: 'monospace', fontSize: '1.1rem', marginBottom: '1rem' }}>
+                /{currentQ.pronounce || currentQ.sound}/ • {formatPhoneme(currentQ.sound)}
+              </div>
 
-              <div style={{ marginTop: '0.6rem' }}>
-                <button 
-                  type="button"
-                  className="listen-audio-btn" 
-                  onClick={listenDiagnosticTarget}
-                  style={{ padding: '0.4rem 0.9rem', fontSize: '0.8rem' }}
-                >
-                  <span>🔊</span> Listen Target Voice
-                </button>
+              {/* Sapphire Mascot */}
+              <div style={{ margin: '0.5rem auto' }}>
+                <Mascot state={status === 'recording' ? 'listening' : 'happy'} size={72} />
               </div>
 
               {liveHeard && (
@@ -2126,7 +2083,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               )}
             </div>
 
-            {/* Mic Button */}
+            {/* Mic Button with Auto-Silence Stop */}
             <div className="mic-action-area">
               <button 
                 type="button"
@@ -2138,20 +2095,35 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               </button>
 
               <div className="mic-timer-label">
-                {status === 'recording' ? `Recording (${recordingSeconds}s) — Auto-stops on pause` : 'Tap to Speak Word'}
+                {status === 'recording' ? `Recording (${recordingSeconds}s) — Auto-stops when you pause` : 'Tap to Speak Word'}
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+            <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
               <button 
                 type="button"
                 onClick={() => {
+                  const skippedData = {
+                    qNum: currentIndex + 1,
+                    display_name: currentQ.display_name,
+                    sound: currentQ.sound,
+                    word: currentQ.word,
+                    pronounce: currentQ.pronounce,
+                    skill: currentQ.skill || 'consonants',
+                    score: 0,
+                    detected: false,
+                    spoken_word: '',
+                    diagnosis_note: 'Skipped question',
+                    spoken: []
+                  };
+                  const nextResults = [...results, skippedData];
+                  setResults(nextResults);
                   if (currentIndex + 1 < questions.length) setCurrentIndex(currentIndex + 1);
-                  else generateFinalReport(results);
+                  else generateFinalReport(nextResults);
                 }}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
               >
-                Skip Question →
+                Skip Question ➔
               </button>
             </div>
           </div>
@@ -2170,7 +2142,6 @@ function TeacherDashboard({ teacher, onSignOut }) {
   const [selectedBranch, setSelectedBranch] = useState('ALL');
   const [sortBy, setSortBy] = useState('xp');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState(null);
 
   useEffect(() => {
     getAllStudentReports().then((data) => {

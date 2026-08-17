@@ -124,15 +124,35 @@ def _is_accent_match(expected, spoken, accent):
         return False
     return (expected, spoken) in ACCENT_ACCEPTED or (spoken, expected) in ACCENT_ACCEPTED
 
+IPA_MAP = {
+    "\u03b8": "th (\u0925)", "\u00f0": "dh (\u0926)", "\u0283": "sh (\u0936)", "t\u0283": "ch (\u091a)",
+    "d\u0292": "j (\u091c)", "\u0292": "zh (\u091c\u093c)", "\u014b": "ng (\u0902\u0917)", "v": "v (\u0935)",
+    "w": "w (\u0935)", "r": "r (\u0930)", "l": "l (\u0932)", "s": "s (\u0938)", "z": "z (\u091c\u093c)",
+    "\u00e6": "a/ae (\u0910)", "\u028c": "u/uh (\u0905)", "\u0259": "uh (\u0905)", "i\u02d0": "ee (\u0908)",
+    "\u026a": "i (\u0907)", "u\u02d0": "oo (\u090a)", "\u028a": "u (\u0909)", "\u0254\u02d0": "aw (\u0911)",
+    "\u0251\u02d0": "aa (\u0906)", "\u025c\u02d0r": "ur/er (\u0905\u0930)", "e\u026a": "ay (\u090f)",
+    "a\u026a": "eye (\u0906\u0907)", "o\u028a": "oh (\u0913)", "a\u028a": "ow (\u0906\u0909)", "\u0254\u026a": "oy (\u0911\u0907)",
+    "\u025b": "e (\u090f)", "p": "p (\u092a)", "b": "b (\u092c)", "t": "t (\u091f)", "d": "d (\u0921)",
+    "k": "k (\u0915)", "g": "g (\u0917)", "f": "f (\u092b)", "h": "h (\u0939)", "m": "m (\u092e)", "n": "n (\u0928)"
+}
+
+def _h(s):
+    if not s:
+        return ""
+    return IPA_MAP.get(s, s)
+
 def _tip(kind, expected, spoken):
+    exp_h = _h(expected)
+    spk_h = _h(spoken)
     if kind == "correct":
         return "Clear sound."
     if kind == "accent_match":
-        return f"Accepted Indian English variation. '{expected}' pronounced as '{spoken}' is fine."
+        return f"Accepted Indian English variation. '{exp_h}' pronounced as '{spk_h}' is fine."
     if kind == "close":
-        return f"Close sound. Expected '{expected}', heard '{spoken}'. Slow down and exaggerate the target sound."
+        return f"Close sound. Expected '{exp_h}', heard '{spk_h}'. Slow down and articulate clearly."
     if kind == "missing":
-        return f"Missing '{expected}'. Complete this sound before moving to the next."
+        return f"Missing sound '{exp_h}'. Complete this sound before moving to next."
     if kind == "extra":
-        return f"Extra '{spoken}' detected. Keep the word compact."
-    return f"Expected '{expected}', heard '{spoken}'. Practice this sound pair slowly."
+        return f"Extra sound '{spk_h}' detected. Keep the word compact."
+    return f"Expected '{exp_h}', heard '{spk_h}'. Practice this sound slowly."
+
