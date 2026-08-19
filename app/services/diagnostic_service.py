@@ -136,6 +136,9 @@ def _check_target_sound(spoken_ipa: list, target_sound: str, whisper_heard: str,
         "w":  (["v"], 20),                   # W said as V
         "r":  (["l"], 20),                   # R said as L
         "l":  (["r"], 20),                   # L said as R
+        "z":  (["s"], 20),                   # Z said as unvoiced S
+        "j":  (["z", "j"], 20),              # J said as Z or Y
+        "ch": (["ʃ", "s"], 20),              # CH said as SH or S
     }
 
     if target_sound not in SOUND_PENALTIES:
@@ -151,6 +154,9 @@ def _check_target_sound(spoken_ipa: list, target_sound: str, whisper_heard: str,
         "w":  ["w"],
         "r":  ["ɹ", "r"],
         "l":  ["l"],
+        "z":  ["z"],
+        "j":  ["dʒ", "ʒ"],
+        "ch": ["tʃ", "t͡ʃ"],
     }
     correct_tokens = CORRECT_FOR_SOUND.get(target_sound, [])
 

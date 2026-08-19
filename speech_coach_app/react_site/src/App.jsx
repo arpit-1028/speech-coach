@@ -110,11 +110,23 @@ export default function App() {
   const [progress, setProgress] = useState(() => loadProgressForUser(loadSession()?.id));
   const [activeLevelId, setActiveLevelId] = useState(1);
   const [selectedStageId, setSelectedStageId] = useState(1);
-  const [screen, setScreen] = useState(user ? 'home' : 'auth'); // 'home' | 'map' | 'practice' | 'result' | 'grammar' | 'translate' | 'auth'
+  const [screen, setScreen] = useState(user ? 'home' : 'auth');
   const [status, setStatus] = useState('ready');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+  // Dark theme support
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('sapphireTheme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches || false;
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+    localStorage.setItem('sapphireTheme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   // Modals state
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -568,6 +580,15 @@ export default function App() {
               <span>{Math.min(5, completedCount % 5 + 1)}/5 Goal</span>
             </div>
 
+            <button 
+              className="user-avatar-btn"
+              onClick={() => setDarkMode(!darkMode)}
+              title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              style={{ fontSize: '1.2rem', cursor: 'pointer', border: 'none', background: darkMode ? '#232738' : 'var(--bg-surface-subtle)' }}
+            >
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+
             <div 
               className="user-avatar-btn" 
               onClick={() => setShowProfileModal(true)}
@@ -649,7 +670,7 @@ export default function App() {
                         <p>Level: {grammarLevel.toUpperCase()} • Daily Scenarios</p>
                       </div>
                     </div>
-                    <button className="btn-3d btn-3d-gold btn-sm" type="button">
+                    <button className="btn-3d btn-3d-primary btn-sm" type="button">
                       Start ➔
                     </button>
                   </div>
@@ -1591,30 +1612,47 @@ const FULL_DIAGNOSTIC_15 = [
   { sound: 'b', display_name: 'B Sound', word: 'ball', pronounce: 'bɔːl', skill: 'consonants', difficulty: 'easy' },
   { sound: 's', display_name: 'S Sound', word: 'sun', pronounce: 'sʌn', skill: 'consonants', difficulty: 'easy' },
   { sound: 'sh', display_name: 'SH Sound', word: 'ship', pronounce: 'ʃɪp', skill: 'sh_confusion', difficulty: 'easy' },
-  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', difficulty: 'easy' },
+  { sound: 'ch', display_name: 'CH Sound', word: 'chair', pronounce: 'tʃɛər', skill: 'consonants', difficulty: 'easy' },
+  { sound: 'j', display_name: 'J Sound', word: 'jump', pronounce: 'dʒʌmp', skill: 'consonants', difficulty: 'medium' },
+  { sound: 'z', display_name: 'Z Sound', word: 'zero', pronounce: 'ˈzɪəroʊ', skill: 'consonants', difficulty: 'medium' },
   { sound: 'v', display_name: 'V Sound', word: 'very', pronounce: 'ˈvɛri', skill: 'vw_confusion', difficulty: 'medium' },
   { sound: 'w', display_name: 'W Sound', word: 'water', pronounce: 'ˈwɔːtər', skill: 'vw_confusion', difficulty: 'medium' },
   { sound: 'th', display_name: 'TH Sound (Unvoiced)', word: 'think', pronounce: 'θɪŋk', skill: 'th_sounds', difficulty: 'medium' },
   { sound: 'dh', display_name: 'TH Sound (Voiced)', word: 'this', pronounce: 'ðɪs', skill: 'th_sounds', difficulty: 'medium' },
-  { sound: 'l', display_name: 'L Sound', word: 'little', pronounce: 'ˈlɪtəl', skill: 'rl_confusion', difficulty: 'medium' },
-  { sound: 'th', display_name: 'TH + R Blend', word: 'through', pronounce: 'θruː', skill: 'th_sounds', difficulty: 'hard' },
-  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', difficulty: 'hard' },
+  { sound: 'r', display_name: 'R Sound', word: 'red', pronounce: 'rɛd', skill: 'rl_confusion', difficulty: 'medium' },
+  { sound: 'l', display_name: 'L Sound', word: 'little', pronounce: 'ˈlɪtəl', skill: 'rl_confusion', difficulty: 'hard' },
   { sound: 'th', display_name: 'TH in Context', word: 'weather', pronounce: 'ˈwɛðər', skill: 'th_sounds', difficulty: 'hard' },
-  { sound: 'r', display_name: 'R + TH Blend', word: 'thirty', pronounce: 'ˈθɜːrti', skill: 'rl_confusion', difficulty: 'hard' },
-  { sound: 'th', display_name: 'TH Multi-Syllable', word: 'therefore', pronounce: 'ˈðɛərfɔːr', skill: 'th_sounds', difficulty: 'hard' }
+  { sound: 'w', display_name: 'W + R Blend', word: 'world', pronounce: 'wɜːrld', skill: 'vw_confusion', difficulty: 'hard' }
 ];
+
+const DIAGNOSTIC_IMPROVEMENT_TIPS = {
+  m: "Press lips together firmly for M (म)",
+  b: "Pop lips open with voice vibration for B (ब)",
+  s: "Keep tongue behind front teeth with a clean hissing S (स)",
+  sh: "Round lips forward and widen air stream for SH (श)",
+  ch: "Place tongue behind front teeth and release with sharp burst for CH (च)",
+  j: "Voice the sound with tongue touching palate firmly for J (ज)",
+  z: "Vibrate vocal cords while hissing for Z (ज़)",
+  v: "Touch top teeth to lower lip with vocal vibration for V (व)",
+  w: "Round both lips into an 'O' circle without teeth for W (व/वा)",
+  th: "Place tongue tip gently between teeth and blow air for TH (थ)",
+  dh: "Place tongue tip between teeth with vocal vibration for DH (द)",
+  r: "Curl tongue tip back slightly without touching the roof for R (र)",
+  l: "Touch tongue tip flatly behind upper front teeth for L (ल)",
+};
 
 function DiagnosticModal({ user, progress, setProgress, onClose }) {
   const [questions, setQuestions] = useState(FULL_DIAGNOSTIC_15);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'report'
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [liveHeard, setLiveHeard] = useState('');
 
   const recorderRef = useRef(null);
+  const streamRef = useRef(null);
   const timerRef = useRef(null);
   const recognitionRef = useRef(null);
   const silenceDetectRef = useRef(null);
@@ -1646,14 +1684,24 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       try { recognitionRef.current.stop(); } catch {}
       recognitionRef.current = null;
     }
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      } catch {}
+      streamRef.current = null;
+    }
   }
 
   function startSilenceDetection(stream) {
     try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      audioCtxRef.current = ctx;
+      if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
+      if (!audioCtxRef.current) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) audioCtxRef.current = new AudioCtx();
+      }
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
@@ -1679,7 +1727,8 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         } else if (speechDetected) {
           if (!silenceStartTime) {
             silenceStartTime = Date.now();
-          } else if (Date.now() - silenceStartTime > 1200) {
+          } else if (Date.now() - silenceStartTime > 950) {
+            // User finished speaking single word -> Auto-evaluate instantly!
             silenceDetectRef.current = null;
             stopAndEvaluate();
             return;
@@ -1691,20 +1740,60 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     } catch {}
   }
 
-  async function startRecording() {
+  async function getOrInitStream() {
+    if (streamRef.current && streamRef.current.active) {
+      return streamRef.current;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 16000
+      }
+    });
+    streamRef.current = stream;
+    return stream;
+  }
+
+  async function startRecording(passedStream = null) {
     setError('');
     setLiveHeard('');
     heardRef.current = '';
 
     try {
-      recorderRef.current = new AudioRecorder();
-      const stream = await recorderRef.current.start();
+      const stream = passedStream || (await getOrInitStream());
+      
+      // Use lightweight MediaRecorder on active stream
+      const chunks = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+      
+      recorderRef.current = {
+        mediaRecorder,
+        chunks,
+        stop: () =>
+          new Promise((resolve) => {
+            if (mediaRecorder.state === 'inactive') {
+              resolve(new Blob(chunks, { type: 'audio/webm' }));
+              return;
+            }
+            mediaRecorder.onstop = () => {
+              resolve(new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' }));
+            };
+            mediaRecorder.stop();
+          })
+      };
+
+      mediaRecorder.start();
       setStatus('recording');
       setRecordingSeconds(0);
 
+      if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => {
         setRecordingSeconds((s) => {
-          if (s >= 6) {
+          if (s >= 5) {
             stopAndEvaluate();
             return s;
           }
@@ -1712,11 +1801,14 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         });
       }, 1000);
 
-      if (stream) startSilenceDetection(stream);
+      startSilenceDetection(stream);
 
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRec) {
         try {
+          if (recognitionRef.current) {
+            try { recognitionRef.current.stop(); } catch {}
+          }
           const rec = new SpeechRec();
           rec.continuous = false;
           rec.interimResults = true;
@@ -1738,19 +1830,30 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       }
     } catch (e) {
       setError(e.message || 'Microphone access failed.');
+      setStatus('idle');
     }
   }
 
   async function stopAndEvaluate() {
     if (!recorderRef.current || status === 'processing') return;
-    cleanupAll();
+    
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+
     setStatus('processing');
 
     const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
     const targetWord = (currentQ.word || '').trim().toLowerCase();
+    const soundImprovementTip = DIAGNOSTIC_IMPROVEMENT_TIPS[currentQ.sound] || 'Practice sound clarity.';
 
     try {
       const audioBlob = await recorderRef.current.stop();
+      recorderRef.current = null;
+
       let calcScore = 0;
       let detected = false;
       let spokenWord = '';
@@ -1763,17 +1866,17 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
           calcScore = normalizeScore(checkRes.score);
           detected = calcScore >= 60;
           spokenWord = checkRes.spoken_word || (checkRes.spoken && checkRes.spoken.join('')) || currentQ.word;
-          diagnosisNote = checkRes.feedback?.summary || (calcScore >= 70 ? 'Clear articulation' : 'Sound variations heard');
+          diagnosisNote = calcScore >= 70 ? 'Clear pronunciation! ✓' : `Needs attention: ${soundImprovementTip}`;
         }
       } catch {
-        // Fallback: try evaluateDiagnosticSound
+        // Fallback: evaluateDiagnosticSound
         try {
           const diagRes = await evaluateDiagnosticSound(audioBlob, currentIndex);
           if (diagRes && typeof diagRes.score !== 'undefined') {
             calcScore = normalizeScore(diagRes.score);
             detected = diagRes.detected || calcScore >= 60;
             spokenWord = diagRes.spoken_word || currentQ.word;
-            diagnosisNote = calcScore >= 70 ? 'Sound detected clearly' : 'Needs attention';
+            diagnosisNote = calcScore >= 70 ? 'Clear pronunciation! ✓' : `Needs attention: ${soundImprovementTip}`;
           }
         } catch {
           // Client-side Web Speech recognition fallback for standalone deployment
@@ -1783,15 +1886,15 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             if (spoken === targetWord || spoken.includes(targetWord)) {
               calcScore = 92;
               detected = true;
-              diagnosisNote = 'Target word matched accurately';
+              diagnosisNote = 'Target word matched accurately! ✓';
             } else if (targetWord.startsWith(spoken.slice(0, 3)) || spoken.startsWith(targetWord.slice(0, 3))) {
               calcScore = 76;
               detected = true;
-              diagnosisNote = `Close match — heard '${spoken}'`;
+              diagnosisNote = `Close match — ${soundImprovementTip}`;
             } else {
               calcScore = 25;
               detected = false;
-              diagnosisNote = `Heard '${spoken}' instead of '${targetWord}'`;
+              diagnosisNote = `Heard '${spoken}' instead of '${targetWord}'. ${soundImprovementTip}`;
             }
           } else {
             calcScore = 0;
@@ -1812,6 +1915,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         detected: detected,
         spoken_word: spokenWord,
         diagnosis_note: diagnosisNote,
+        improvement_tip: soundImprovementTip,
         spoken: spokenWord ? [spokenWord] : []
       };
 
@@ -1820,10 +1924,13 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       setLiveHeard('');
 
       if (currentIndex + 1 < questions.length) {
-        setCurrentIndex(currentIndex + 1);
-        setStatus('idle');
+        const nextIdx = currentIndex + 1;
+        setCurrentIndex(nextIdx);
         setRecordingSeconds(0);
+        // Instant seamless transition: immediately start recording on warm stream!
+        startRecording(streamRef.current);
       } else {
+        cleanupAll();
         generateFinalReport(nextResults);
       }
     } catch {
@@ -1871,7 +1978,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       : computeLocalOverall(allResults);
 
     const SKILL_LABELS = {
-      consonants: 'Consonant Clarity',
+      consonants: 'Consonant Clarity (m, b, s, ch, j, z)',
       th_sounds: 'TH Sounds (थ/द)',
       vw_confusion: 'V vs W Distinction (व/वा)',
       rl_confusion: 'R vs L Distinction (र/ल)',
@@ -1988,32 +2095,36 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               </div>
             </div>
 
-            {/* Detailed Per-Question Breakdown List (Correction 6) */}
+            {/* Detailed Per-Question Breakdown List */}
             <div style={{ marginBottom: '1.25rem' }}>
               <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
                 Detailed Question-by-Question Results ({results.length}/15)
               </h4>
-              <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '14px' }}>
+              <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '14px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)', textAlign: 'left' }}>
-                      <th style={{ padding: '0.5rem 0.75rem' }}>Q#</th>
-                      <th style={{ padding: '0.5rem 0.75rem' }}>Target Word</th>
-                      <th style={{ padding: '0.5rem 0.75rem' }}>Target Sound</th>
-                      <th style={{ padding: '0.5rem 0.75rem' }}>Heard / Note</th>
-                      <th style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>Score</th>
+                      <th style={{ padding: '0.5rem 0.6rem' }}>Q#</th>
+                      <th style={{ padding: '0.5rem 0.6rem' }}>Target</th>
+                      <th style={{ padding: '0.5rem 0.6rem' }}>Sound</th>
+                      <th style={{ padding: '0.5rem 0.6rem' }}>You Said</th>
+                      <th style={{ padding: '0.5rem 0.6rem' }}>Feedback &amp; How to Improve</th>
+                      <th style={{ padding: '0.5rem 0.6rem', textAlign: 'center' }}>Score</th>
                     </tr>
                   </thead>
                   <tbody>
                     {results.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: r.score >= 70 ? 'transparent' : '#FFF1F2' }}>
-                        <td style={{ padding: '0.5rem 0.75rem', fontWeight: 800 }}>{i + 1}</td>
-                        <td style={{ padding: '0.5rem 0.75rem', fontWeight: 800, color: 'var(--royal-violet-deep)' }}>"{r.word}"</td>
-                        <td style={{ padding: '0.5rem 0.75rem' }}>{formatPhoneme(r.sound)}</td>
-                        <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-secondary)' }}>
-                          {r.diagnosis_note || (r.spoken_word ? `Heard "${r.spoken_word}"` : 'Clear')}
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: r.score >= 70 ? 'transparent' : 'rgba(244, 63, 94, 0.06)' }}>
+                        <td style={{ padding: '0.5rem 0.6rem', fontWeight: 800 }}>{i + 1}</td>
+                        <td style={{ padding: '0.5rem 0.6rem', fontWeight: 800, color: 'var(--royal-violet-deep)' }}>"{r.word}"</td>
+                        <td style={{ padding: '0.5rem 0.6rem' }}>{formatPhoneme(r.sound)}</td>
+                        <td style={{ padding: '0.5rem 0.6rem', fontWeight: 600, color: r.spoken_word ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                          {r.spoken_word ? `"${r.spoken_word}"` : '—'}
                         </td>
-                        <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center', fontWeight: 800, color: r.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                        <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.78rem', color: r.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)', fontWeight: 600 }}>
+                          {r.diagnosis_note || (r.score >= 70 ? 'Clear pronunciation! ✓' : r.improvement_tip)}
+                        </td>
+                        <td style={{ padding: '0.5rem 0.6rem', textAlign: 'center', fontWeight: 800, color: r.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
                           {r.score}%
                         </td>
                       </tr>
@@ -2024,7 +2135,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.8rem' }}>
+            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
               <button 
                 onClick={applyPlacement} 
                 className="btn-3d btn-3d-success" 
@@ -2032,6 +2143,59 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
                 style={{ flex: 1 }}
               >
                 🚀 Apply Results &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
+              </button>
+              <button 
+                onClick={() => {
+                  // Generate printable PDF report
+                  const rows = results.map((r, i) => 
+                    `<tr style="border-bottom:1px solid #ddd;${r.score < 70 ? 'background:#FFF1F2;' : ''}">
+                      <td style="padding:6px 8px;font-weight:700">${i+1}</td>
+                      <td style="padding:6px 8px;font-weight:700;color:#4338CA">"${r.word}"</td>
+                      <td style="padding:6px 8px">${r.display_name || formatPhoneme(r.sound)}</td>
+                      <td style="padding:6px 8px;color:#475569">${r.spoken_word || '—'}</td>
+                      <td style="padding:6px 8px;color:#475569">${r.diagnosis_note || 'Clear'}</td>
+                      <td style="padding:6px 8px;text-align:center;font-weight:700;color:${r.score >= 70 ? '#059669' : '#F43F5E'}">${r.score}%</td>
+                    </tr>`
+                  ).join('');
+                  const skillRows = Object.entries(report.pronunciation_scores || {}).map(([skill, val]) =>
+                    `<div style="display:inline-block;margin:4px 6px;padding:6px 12px;border-radius:8px;background:${val >= 70 ? '#ECFDF5' : '#FFF1F2'};color:${val >= 70 ? '#059669' : '#F43F5E'};font-weight:700;font-size:13px">
+                      ${skill.replace('_', ' ')}: ${val}%
+                    </div>`
+                  ).join('');
+                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                    <title>Sapphire Diagnostic Report - ${user?.name || 'Student'}</title>
+                    <style>body{font-family:'Segoe UI',sans-serif;padding:24px;color:#0F172A;max-width:800px;margin:0 auto}
+                    h1{color:#4338CA;margin-bottom:4px}table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+                    th{background:#F1F5F9;padding:8px;text-align:left;border-bottom:2px solid #E2E8F0;font-size:12px}
+                    .score-big{font-size:48px;font-weight:900;text-align:center;margin:8px 0}
+                    .section{margin:16px 0;padding:12px;border:1px solid #E2E8F0;border-radius:12px}
+                    @media print{body{padding:12px}}</style></head><body>
+                    <h1>🎯 Sapphire Speech Coach — Diagnostic Report</h1>
+                    <p style="color:#64748B;margin-bottom:16px">Student: <strong>${user?.name || 'Student'}</strong> | ID: ${user?.libraryId || '—'} | Date: ${new Date().toLocaleDateString()}</p>
+                    <div class="section" style="text-align:center;background:#EEF2FF;border-color:#C7D2FE">
+                      <div style="font-size:12px;font-weight:700;color:#6366F1;text-transform:uppercase">Overall Diagnostic Score</div>
+                      <div class="score-big" style="color:${report.overall_score >= 70 ? '#059669' : '#D97706'}">${report.overall_score}%</div>
+                      <div style="font-weight:700">${report.overall_score >= 85 ? '🌟 Advanced' : report.overall_score >= 65 ? '👍 Intermediate' : '🎯 Foundation Level'}</div>
+                    </div>
+                    <div class="section"><h3 style="font-size:14px;margin-bottom:8px">Skill Breakdown</h3>${skillRows}</div>
+                    <div class="section"><h3 style="font-size:14px;margin-bottom:8px">Per-Question Breakdown (${results.length}/15)</h3>
+                    <table><thead><tr><th>Q#</th><th>Target</th><th>Sound</th><th>You Said</th><th>Feedback</th><th style="text-align:center">Score</th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>
+                    <div class="section"><h3 style="font-size:14px;margin-bottom:6px">Recommended Next Steps</h3>
+                    <ul style="padding-left:18px;font-size:13px;color:#475569">${(report.recommended_learning_path || []).map(t => '<li style="margin:4px 0">' + t + '</li>').join('')}</ul></div>
+                    <p style="text-align:center;color:#94A3B8;font-size:11px;margin-top:20px">Generated by Sapphire Speech Coach • ${new Date().toLocaleString()}</p>
+                    </body></html>`;
+                  const blob = new Blob([html], { type: 'text/html' });
+                  const url = URL.createObjectURL(blob);
+                  const win = window.open(url, '_blank');
+                  if (win) {
+                    win.onload = () => { setTimeout(() => { win.print(); }, 300); };
+                  }
+                }}
+                className="btn-3d btn-3d-primary" 
+                type="button"
+              >
+                📄 Download Report
               </button>
               <button onClick={onClose} className="btn-3d btn-3d-white" type="button">
                 Done

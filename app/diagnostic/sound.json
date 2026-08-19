@@ -36,13 +36,31 @@
     "difficulty": "easy"
   },
   {
-    "sound": "r",
-    "word": "red",
-    "display_name": "R Sound",
-    "pronounce": "rɛd",
-    "skill": "rl_confusion",
-    "hint": "Say 'red' — curl tongue back slightly for R",
+    "sound": "ch",
+    "word": "chair",
+    "display_name": "CH Sound",
+    "pronounce": "tʃɛər",
+    "skill": "consonants",
+    "hint": "Say 'chair' — tongue behind teeth, release with burst",
     "difficulty": "easy"
+  },
+  {
+    "sound": "j",
+    "word": "jump",
+    "display_name": "J Sound",
+    "pronounce": "dʒʌmp",
+    "skill": "consonants",
+    "hint": "Say 'jump' — voiced J sound with tongue on palate",
+    "difficulty": "medium"
+  },
+  {
+    "sound": "z",
+    "word": "zero",
+    "display_name": "Z Sound",
+    "pronounce": "ˈzɪəroʊ",
+    "skill": "consonants",
+    "hint": "Say 'zero' — buzz your vocal cords for Z",
+    "difficulty": "medium"
   },
   {
     "sound": "v",
@@ -81,30 +99,21 @@
     "difficulty": "medium"
   },
   {
+    "sound": "r",
+    "word": "red",
+    "display_name": "R Sound",
+    "pronounce": "rɛd",
+    "skill": "rl_confusion",
+    "hint": "Say 'red' — curl tongue back slightly for R",
+    "difficulty": "medium"
+  },
+  {
     "sound": "l",
     "word": "little",
     "display_name": "L Sound",
     "pronounce": "ˈlɪtəl",
     "skill": "rl_confusion",
     "hint": "Say 'little' — tongue tip touches roof of mouth for L",
-    "difficulty": "medium"
-  },
-  {
-    "sound": "th",
-    "word": "through",
-    "display_name": "TH + R Blend",
-    "pronounce": "θruː",
-    "skill": "th_sounds",
-    "hint": "Say 'through' — TH then R in one smooth motion",
-    "difficulty": "hard"
-  },
-  {
-    "sound": "w",
-    "word": "world",
-    "display_name": "W + R Blend",
-    "pronounce": "wɜːrld",
-    "skill": "vw_confusion",
-    "hint": "Say 'world' — round lips for W, then curl for R",
     "difficulty": "hard"
   },
   {
@@ -117,21 +126,12 @@
     "difficulty": "hard"
   },
   {
-    "sound": "r",
-    "word": "thirty",
-    "display_name": "R + TH Blend",
-    "pronounce": "ˈθɜːrti",
-    "skill": "rl_confusion",
-    "hint": "Say 'thirty' — TH first, then R sound",
-    "difficulty": "hard"
-  },
-  {
-    "sound": "th",
-    "word": "therefore",
-    "display_name": "TH in Long Word",
-    "pronounce": "ˈðɛərfɔːr",
-    "skill": "th_sounds",
-    "hint": "Say 'therefore' — voiced TH at start, clear R in middle",
+    "sound": "w",
+    "word": "world",
+    "display_name": "W + R Blend",
+    "pronounce": "wɜːrld",
+    "skill": "vw_confusion",
+    "hint": "Say 'world' — round lips for W, then curl for R",
     "difficulty": "hard"
   }
 ]
