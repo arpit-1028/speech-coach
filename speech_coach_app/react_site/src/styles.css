@@ -71,44 +71,50 @@
 /* ── Dark Theme ──────────────────────────────────────────────────────────── */
 [data-theme='dark'] {
   /* Surface & Backgrounds */
-  --bg-page: #0F1117;
-  --bg-surface: #1A1D2E;
-  --bg-surface-subtle: #232738;
-  --bg-surface-hover: #2A2F42;
+  --bg-page: #0B0E14;
+  --bg-surface: #151923;
+  --bg-surface-subtle: #1E2330;
+  --bg-surface-hover: #282E3E;
   --bg-lavender: #1E1B4B;
-  --bg-mint: #052E16;
+  --bg-mint: #064E3B;
   --bg-amber: #451A03;
-  --bg-rose: #3B0A0A;
+  --bg-rose: #4C0519;
 
   /* Typography Colors */
-  --text-main: #E8ECF4;
-  --text-secondary: #A0AEC0;
-  --text-muted: #718096;
-  --text-light: #4A5568;
+  --text-main: #F1F5F9;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --text-light: #64748B;
 
   /* Borders & Dividers */
-  --border-light: #2D3348;
-  --border-subtle: #232738;
-  --border-accent: rgba(99, 102, 241, 0.35);
+  --border-light: #282E3E;
+  --border-subtle: #1E2330;
+  --border-accent: rgba(99, 102, 241, 0.4);
+
+  /* Brand Colors adapted for dark mode */
+  --sapphire-blue: #60A5FA;
+  --royal-violet: #818CF8;
+  --royal-violet-dark: #6366F1;
+  --royal-violet-deep: #A5B4FC;
 
   /* Shadows */
-  --shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.3);
-  --shadow-card-hover: 0 12px 32px -4px rgba(99, 102, 241, 0.2), 0 4px 12px -2px rgba(0, 0, 0, 0.4);
-  --shadow-floating: 0 16px 40px -6px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.6), 0 2px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-card-hover: 0 12px 32px -4px rgba(99, 102, 241, 0.3), 0 4px 12px -2px rgba(0, 0, 0, 0.6);
+  --shadow-floating: 0 16px 40px -6px rgba(0, 0, 0, 0.7);
 
   /* Tactile 3D Button Shadows */
-  --btn-3d-violet: 0 4px 0 #312E81;
-  --btn-3d-emerald: 0 4px 0 #064E3B;
-  --btn-3d-gold: 0 4px 0 #78350F;
-  --btn-3d-coral: 0 4px 0 #881337;
-  --btn-3d-surface: 0 4px 0 #1E293B;
+  --btn-3d-violet: 0 4px 0 #3730A3;
+  --btn-3d-emerald: 0 4px 0 #065F46;
+  --btn-3d-gold: 0 4px 0 #92400E;
+  --btn-3d-coral: 0 4px 0 #9F1239;
+  --btn-3d-surface: 0 4px 0 #0B0E14;
 }
 
 [data-theme='dark'] body {
   background-image:
-    radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.08) 0px, transparent 45%),
-    radial-gradient(at 85% 85%, rgba(6, 182, 212, 0.06) 0px, transparent 45%);
+    radial-gradient(at 15% 15%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+    radial-gradient(at 85% 85%, rgba(6, 182, 212, 0.08) 0px, transparent 50%);
 }
 
 [data-theme='dark'] input,
@@ -122,6 +128,92 @@
 [data-theme='dark'] .modal-card {
   background: var(--bg-surface);
   border-color: var(--border-light);
+}
+
+/* Specific Dark Mode Overrides to prevent blinding white cards */
+[data-theme='dark'] .level-hero-card {
+  background: linear-gradient(135deg, #1E1B4B 0%, #0F172A 100%) !important;
+  border-color: #3730A3 !important;
+}
+
+[data-theme='dark'] .level-tag {
+  background: rgba(30, 27, 75, 0.9) !important;
+  color: #A5B4FC !important;
+  border: 1px solid rgba(165, 180, 252, 0.3) !important;
+}
+
+[data-theme='dark'] .level-xp-bar-bg {
+  background: #1E2330 !important;
+  border-color: #282E3E !important;
+}
+
+[data-theme='dark'] .sidebar-mascot-card {
+  background: linear-gradient(135deg, #1E1B4B 0%, #172554 100%) !important;
+  border-color: #3730A3 !important;
+}
+
+[data-theme='dark'] .sidebar-mascot-text h4 {
+  color: #C7D2FE !important;
+}
+
+[data-theme='dark'] .sidebar-mascot-text p {
+  color: #94A3B8 !important;
+}
+
+[data-theme='dark'] .stat-pill-streak {
+  background: rgba(245, 158, 11, 0.18) !important;
+  color: #FCD34D !important;
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+
+[data-theme='dark'] .stat-pill-xp {
+  background: rgba(234, 179, 8, 0.18) !important;
+  color: #FDE047 !important;
+  border-color: rgba(234, 179, 8, 0.35) !important;
+}
+
+[data-theme='dark'] .stat-pill-goal {
+  background: rgba(99, 102, 241, 0.18) !important;
+  color: #A5B4FC !important;
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+[data-theme='dark'] .plan-item-icon {
+  background: #1E2330 !important;
+}
+
+[data-theme='dark'] .bottom-motivation-bar {
+  background: #151923 !important;
+  border-top-color: #282E3E !important;
+}
+
+[data-theme='dark'] .mobile-bottom-nav {
+  background: #151923 !important;
+  border-top-color: #282E3E !important;
+}
+
+[data-theme='dark'] .practice-card {
+  background: #151923 !important;
+  border-color: #282E3E !important;
+}
+
+[data-theme='dark'] .result-card {
+  background: #151923 !important;
+  border-color: #282E3E !important;
+}
+
+[data-theme='dark'] .grammar-card {
+  background: #151923 !important;
+  border-color: #282E3E !important;
+}
+
+[data-theme='dark'] .translate-card {
+  background: #151923 !important;
+  border-color: #282E3E !important;
+}
+
+[data-theme='dark'] .user-avatar-btn {
+  border-color: #282E3E !important;
 }
 
 /* ── Base Resets ──────────────────────────────────────────────────────────── */

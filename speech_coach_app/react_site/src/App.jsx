@@ -116,11 +116,10 @@ export default function App() {
   const [error, setError] = useState('');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
-  // Dark theme support
+  // Dark theme support — defaults to Light theme unless user explicitly chooses Dark
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('sapphireTheme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches || false;
+    return saved === 'dark';
   });
 
   useEffect(() => {
@@ -162,6 +161,15 @@ export default function App() {
   const activeLevel = useMemo(() => getLevel(activeLevelId), [activeLevelId]);
   const completedCount = allLevels.filter((lvl) => (progress.completed[lvl.id]?.bestScore || 0) >= PASS_SCORE).length;
   const nextOpen = allLevels.find((lvl) => isUnlocked(lvl, progress) && (progress.completed[lvl.id]?.bestScore || 0) < PASS_SCORE) || allLevels[0];
+  
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const todayPassedAttempts = useMemo(() => {
+    return (progress.attempts || []).filter(
+      (a) => a.date && a.date.slice(0, 10) === todayDateStr && a.passed
+    );
+  }, [progress.attempts, todayDateStr]);
+  const dailyGoalTarget = 5;
+  const dailyGoalProgress = Math.min(dailyGoalTarget, todayPassedAttempts.length);
   
   const level = Math.max(1, Math.floor(progress.xp / 100) + 1);
   const levelXp = progress.xp % 100;
@@ -575,9 +583,9 @@ export default function App() {
               <span>{progress.xp} XP</span>
             </div>
 
-            <div className="stat-pill" style={{ background: '#FFFBEB', color: '#B45309', border: '1px solid #FDE68A' }} title="Daily Goal">
+            <div className="stat-pill stat-pill-goal" title="Daily Goal: Practice 5 words today">
               <span>🎯</span>
-              <span>{Math.min(5, completedCount % 5 + 1)}/5 Goal</span>
+              <span>{dailyGoalProgress}/{dailyGoalTarget} Goal</span>
             </div>
 
             <button 
@@ -712,7 +720,7 @@ export default function App() {
                         <div className="plan-item-reward">+50 XP Reward</div>
                       </div>
                     </div>
-                    <div className="plan-item-progress">{Math.min(5, completedCount % 5 + 1)} / 5</div>
+                    <div className="plan-item-progress">{dailyGoalProgress} / {dailyGoalTarget} {dailyGoalProgress >= dailyGoalTarget ? '✓' : ''}</div>
                   </div>
 
                   <div className="plan-item">
