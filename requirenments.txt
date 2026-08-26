@@ -11,3 +11,4 @@ google-genai
 edge-tts
 faster-whisper
 python-dotenv
+requests

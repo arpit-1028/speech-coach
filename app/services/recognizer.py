@@ -50,28 +50,33 @@ def preprocess_audio(input_file):
 # ── Whisper transcription ──────────────────────────────────────────────────────
 def _transcribe_words(audio_path: str, hint_word: str = "") -> list[str]:
     """
-    Transcribe audio with Whisper and return a list of cleaned lower-case words.
+    Transcribe audio and return a list of cleaned lower-case words.
     Language is forced to English so Indian-accented speech is always treated as
     English rather than being guessed as Hindi or another language.
 
-    Key settings that prevent hallucination:
-    - condition_on_previous_text=False : each segment is independent; prevents
-      Whisper from chaining random text when audio is unclear.
-    - no_speech_threshold=0.65 : segments with high no-speech probability are
-      silently dropped instead of hallucinated into random sentences.
+    Primary: Groq Cloud API (whisper-large-v3-turbo) — ultra-fast, free tier.
+    Fallback: Local faster-whisper model if Groq is unavailable.
     """
-    model = _get_whisper()
-    segments, info = model.transcribe(
-        audio_path,
-        language="en",                    # force English
-        task="transcribe",
-        beam_size=5,
-        word_timestamps=False,
-        condition_on_previous_text=False, # prevents hallucination chains
-        no_speech_threshold=0.65,         # drop silent/noise segments
-        temperature=0.0,                  # greedy decode — less creative
-    )
-    text = " ".join(seg.text for seg in segments).strip()
+    # ── Primary: Groq Cloud API (0.3s vs 4s local) ────────────────────────
+    from app.services.groq_whisper import transcribe_groq
+    text = transcribe_groq(audio_path, language="en")
+
+    # ── Fallback: Local Whisper model ─────────────────────────────────────
+    if text is None:
+        print("RECOGNIZER: Falling back to local Whisper model")
+        model = _get_whisper()
+        segments, info = model.transcribe(
+            audio_path,
+            language="en",
+            task="transcribe",
+            beam_size=5,
+            word_timestamps=False,
+            condition_on_previous_text=False,
+            no_speech_threshold=0.65,
+            temperature=0.0,
+        )
+        text = " ".join(seg.text for seg in segments).strip()
+
     print("WHISPER TRANSCRIPT:", text)
 
     # Clean to lower-case alphabetic words only
@@ -84,7 +89,6 @@ def _transcribe_words(audio_path: str, hint_word: str = "") -> list[str]:
     # most relevant words only.
     if hint_word and len(words) > 4:
         print(f"WHISPER LENGTH GUARD: {len(words)} words → filtering to best match for '{hint_word}'")
-        # Keep only words with at least one character in common with hint_word
         hint_chars = set(hint_word.lower())
         filtered = [w for w in words if set(w) & hint_chars]
         words = filtered[:3] if filtered else words[:2]
