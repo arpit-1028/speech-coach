@@ -1653,18 +1653,16 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
   const [questions, setQuestions] = useState(FULL_DIAGNOSTIC_15);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'report'
+  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'answered' | 'report'
+  const [currentEval, setCurrentEval] = useState(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [liveHeard, setLiveHeard] = useState('');
 
   const recorderRef = useRef(null);
-  const streamRef = useRef(null);
   const timerRef = useRef(null);
   const recognitionRef = useRef(null);
-  const silenceDetectRef = useRef(null);
-  const audioCtxRef = useRef(null);
   const heardRef = useRef('');
 
   useEffect(() => {
@@ -1683,137 +1681,27 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
   function cleanupAll() {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
-    if (audioCtxRef.current) {
-      try { audioCtxRef.current.close(); } catch {}
-      audioCtxRef.current = null;
-    }
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
       recognitionRef.current = null;
     }
-    if (streamRef.current) {
-      try {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      } catch {}
-      streamRef.current = null;
+    if (recorderRef.current) {
+      try { recorderRef.current.cancel(); } catch {}
+      recorderRef.current = null;
     }
   }
 
-  function startSilenceDetection(stream) {
-    try {
-      if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
-      if (!audioCtxRef.current) {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) audioCtxRef.current = new AudioCtx();
-      }
-      const ctx = audioCtxRef.current;
-      if (!ctx) return;
-
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
-
-      const dataArray = new Uint8Array(analyser.fftSize);
-      let speechDetected = false;
-      let silenceStartTime = null;
-
-      function checkAudio() {
-        if (status === 'processing') return;
-        analyser.getByteTimeDomainData(dataArray);
-        let sumSq = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          const norm = (dataArray[i] - 128) / 128;
-          sumSq += norm * norm;
-        }
-        const rms = Math.sqrt(sumSq / dataArray.length) * 100;
-
-        if (rms > 8) {
-          speechDetected = true;
-          silenceStartTime = null;
-        } else if (speechDetected) {
-          if (!silenceStartTime) {
-            silenceStartTime = Date.now();
-          } else if (Date.now() - silenceStartTime > 950) {
-            // User finished speaking single word -> Auto-evaluate instantly!
-            silenceDetectRef.current = null;
-            stopAndEvaluate();
-            return;
-          }
-        }
-        silenceDetectRef.current = requestAnimationFrame(checkAudio);
-      }
-      silenceDetectRef.current = requestAnimationFrame(checkAudio);
-    } catch {}
-  }
-
-  async function getOrInitStream() {
-    if (streamRef.current && streamRef.current.active) {
-      const tracks = streamRef.current.getTracks();
-      if (tracks.length > 0 && tracks.some((t) => t.readyState === 'live')) {
-        return streamRef.current;
-      }
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 16000
-      }
-    });
-    streamRef.current = stream;
-    return stream;
-  }
-
-  async function startRecording(passedStream = null) {
+  async function startRecording() {
     setError('');
     setLiveHeard('');
     heardRef.current = '';
+    setCurrentEval(null);
 
     try {
-      const isMediaStream = passedStream && typeof passedStream.getTracks === 'function' && passedStream.active;
-      const stream = isMediaStream ? passedStream : (await getOrInitStream());
+      const rec = new AudioRecorder();
+      recorderRef.current = rec;
+      await rec.start();
 
-      // Safe MediaRecorder creation with MIME type fallback
-      let mediaRecorder;
-      const chunks = [];
-      try {
-        let mimeType = 'audio/webm';
-        if (typeof MediaRecorder.isTypeSupported === 'function') {
-          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            mimeType = 'audio/webm;codecs=opus';
-          } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            mimeType = 'audio/mp4';
-          }
-        }
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-      } catch {
-        mediaRecorder = new MediaRecorder(stream);
-      }
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-      };
-
-      recorderRef.current = {
-        mediaRecorder,
-        chunks,
-        stop: () =>
-          new Promise((resolve) => {
-            if (mediaRecorder.state === 'inactive') {
-              resolve(new Blob(chunks, { type: 'audio/webm' }));
-              return;
-            }
-            mediaRecorder.onstop = () => {
-              resolve(new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' }));
-            };
-            mediaRecorder.stop();
-          })
-      };
-
-      mediaRecorder.start(100);
       setStatus('recording');
       setRecordingSeconds(0);
 
@@ -1828,19 +1716,17 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         });
       }, 1000);
 
-      startSilenceDetection(stream);
-
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRec) {
         try {
           if (recognitionRef.current) {
             try { recognitionRef.current.stop(); } catch {}
           }
-          const rec = new SpeechRec();
-          rec.continuous = false;
-          rec.interimResults = true;
-          rec.lang = 'en-US';
-          rec.onresult = (evt) => {
+          const sRec = new SpeechRec();
+          sRec.continuous = false;
+          sRec.interimResults = true;
+          sRec.lang = 'en-US';
+          sRec.onresult = (evt) => {
             let transcript = '';
             for (let i = evt.resultIndex; i < evt.results.length; ++i) {
               transcript += evt.results[i][0].transcript;
@@ -1851,13 +1737,13 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               heardRef.current = clean;
             }
           };
-          rec.start();
-          recognitionRef.current = rec;
+          sRec.start();
+          recognitionRef.current = sRec;
         } catch {}
       }
     } catch (e) {
       console.error('Diagnostic startRecording error:', e);
-      setError(e.message || 'Microphone access failed.');
+      setError(e.message || 'Microphone access failed. Please grant mic permission.');
       setStatus('idle');
     }
   }
@@ -1866,7 +1752,6 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     if (!recorderRef.current || status === 'processing') return;
 
     if (timerRef.current) clearInterval(timerRef.current);
-    if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
       recognitionRef.current = null;
@@ -1947,38 +1832,39 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         spoken: spokenWord ? [spokenWord] : []
       };
 
-      const nextResults = [...results, evalData];
-      setResults(nextResults);
-      setLiveHeard('');
-
-      if (currentIndex + 1 < questions.length) {
-        const nextIdx = currentIndex + 1;
-        setCurrentIndex(nextIdx);
-        setRecordingSeconds(0);
-        setStatus('idle');
-        // Auto-advance to next question with brief pause
-        setTimeout(() => {
-          startRecording(streamRef.current);
-        }, 300);
-      } else {
-        cleanupAll();
-        generateFinalReport(nextResults);
-      }
+      setCurrentEval(evalData);
+      setStatus('answered');
     } catch (err) {
       console.error('Diagnostic evaluation error:', err);
-      setError('Evaluation error. Please try again.');
+      setError('Evaluation error. Please tap Record to try again.');
       setStatus('idle');
+    }
+  }
+
+  function handleNext() {
+    if (!currentEval) return;
+    const nextResults = [...results, currentEval];
+    setResults(nextResults);
+    setCurrentEval(null);
+    setLiveHeard('');
+
+    if (currentIndex + 1 < questions.length) {
+      setCurrentIndex(currentIndex + 1);
+      setRecordingSeconds(0);
+      setStatus('idle');
+    } else {
+      cleanupAll();
+      generateFinalReport(nextResults);
     }
   }
 
   function handleSkip() {
     if (status === 'processing') return;
     if (recorderRef.current) {
-      try { recorderRef.current.stop(); } catch {}
+      try { recorderRef.current.cancel(); } catch {}
       recorderRef.current = null;
     }
     if (timerRef.current) clearInterval(timerRef.current);
-    if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
       recognitionRef.current = null;
@@ -2001,16 +1887,13 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     };
     const nextResults = [...results, skippedData];
     setResults(nextResults);
+    setCurrentEval(null);
     setLiveHeard('');
 
     if (currentIndex + 1 < questions.length) {
-      const nextIdx = currentIndex + 1;
-      setCurrentIndex(nextIdx);
+      setCurrentIndex(currentIndex + 1);
       setRecordingSeconds(0);
       setStatus('idle');
-      setTimeout(() => {
-        startRecording(streamRef.current);
-      }, 300);
     } else {
       cleanupAll();
       generateFinalReport(nextResults);
@@ -2140,7 +2023,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
           </p>
         </div>
 
-        {/* ── DETAILED REPORT VIEW (Correction 6) ── */}
+        {/* ── DETAILED REPORT VIEW ── */}
         {status === 'report' && report ? (
           <div>
             <div style={{ background: 'var(--bg-lavender)', border: '1.5px solid #C7D2FE', borderRadius: '20px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
@@ -2281,7 +2164,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
             </div>
           </div>
         ) : (
-          /* ── QUESTION TEST VIEW (Screen 8 in Mockup - Clean, No Hints) ── */
+          /* ── QUESTION TEST VIEW (Clean, Simple, Intuitive) ── */
           <div>
             {/* Progress */}
             <div style={{ marginBottom: '1.25rem' }}>
@@ -2294,7 +2177,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               </div>
             </div>
 
-            {/* Word Card (No hints/Listen button - Pure test format) */}
+            {/* Word Card */}
             <div style={{ background: 'var(--bg-surface-subtle)', border: '1.5px solid var(--border-light)', borderRadius: '20px', padding: '2rem 1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
               <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                 Say the word shown below:
@@ -2304,55 +2187,100 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
                 {currentQ.word}
               </div>
 
-              {/* Sapphire Mascot */}
+              {/* Mascot */}
               <div style={{ margin: '0.5rem auto' }}>
-                <Mascot state={status === 'recording' ? 'listening' : 'happy'} size={72} />
+                <Mascot state={status === 'recording' ? 'listening' : status === 'answered' ? (currentEval?.score >= 70 ? 'crowned' : 'thinking') : 'happy'} size={72} />
               </div>
 
-              {liveHeard && (
+              {error && (
+                <div style={{ marginTop: '0.6rem', color: 'var(--coral)', fontSize: '0.82rem', fontWeight: 700 }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
+              {/* Instant Question Feedback after Speaking */}
+              {status === 'answered' && currentEval && (
+                <div style={{ marginTop: '0.8rem', padding: '0.75rem 1rem', background: currentEval.score >= 70 ? 'var(--bg-mint)' : 'var(--bg-rose)', border: `1px solid ${currentEval.score >= 70 ? '#A7F3D0' : '#FECDD3'}`, borderRadius: '12px', textAlign: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: currentEval.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)' }}>
+                      {currentEval.score}%
+                    </span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                      {currentEval.score >= 70 ? 'Great pronunciation!' : 'Needs Practice'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    {currentEval.diagnosis_note}
+                  </div>
+                </div>
+              )}
+
+              {liveHeard && status === 'recording' && (
                 <div style={{ marginTop: '0.8rem', padding: '0.4rem 0.8rem', background: 'var(--bg-lavender)', borderRadius: '8px', color: 'var(--royal-violet-deep)', fontSize: '0.85rem', fontWeight: 700 }}>
                   🗣️ Heard: "{liveHeard}"
                 </div>
               )}
             </div>
 
-            {/* Mic Button with Auto-Silence Stop */}
-            <div className="mic-action-area">
-              <button 
-                type="button"
-                className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
-                onClick={() => {
-                  if (status === 'recording') {
-                    stopAndEvaluate();
-                  } else if (status !== 'processing') {
-                    startRecording();
-                  }
-                }}
-                disabled={status === 'processing'}
-                title={status === 'recording' ? 'Tap to Stop' : 'Tap to Speak Word'}
-              >
-                {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
-              </button>
-
-              <div className="mic-timer-label">
-                {status === 'recording' 
-                  ? `Recording (${recordingSeconds}s) — Auto-stops when you pause` 
-                  : status === 'processing'
-                  ? '⚡ Analyzing pronunciation with Groq...'
-                  : 'Tap to Speak Word'}
+            {/* Action Area: Simple & Clear */}
+            {status === 'answered' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1.25rem' }}>
+                <button
+                  type="button"
+                  className="btn-3d btn-3d-primary"
+                  onClick={handleNext}
+                  style={{ width: '100%', padding: '0.9rem', fontSize: '1.05rem' }}
+                >
+                  {currentIndex + 1 < questions.length ? 'Next Question ➔' : 'View Final Report ➔'}
+                </button>
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  style={{ background: 'none', border: 'none', color: 'var(--royal-violet)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  🔁 Re-record this word
+                </button>
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className="mic-action-area">
+                  <button 
+                    type="button"
+                    className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                    onClick={() => {
+                      if (status === 'recording') {
+                        stopAndEvaluate();
+                      } else if (status !== 'processing') {
+                        startRecording();
+                      }
+                    }}
+                    disabled={status === 'processing'}
+                    title={status === 'recording' ? 'Tap to Stop' : 'Tap to Speak Word'}
+                  >
+                    {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
+                  </button>
 
-            <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
-              <button 
-                type="button"
-                onClick={handleSkip}
-                disabled={status === 'processing'}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
-              >
-                Skip Question ➔
-              </button>
-            </div>
+                  <div className="mic-timer-label">
+                    {status === 'recording' 
+                      ? `Recording (${recordingSeconds}s) — Tap ⏹ when done` 
+                      : status === 'processing'
+                      ? '⚡ Analyzing with Groq AI...'
+                      : 'Tap to Speak Word'}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
+                  <button 
+                    type="button"
+                    onClick={handleSkip}
+                    disabled={status === 'processing'}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    Skip Question ➔
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
