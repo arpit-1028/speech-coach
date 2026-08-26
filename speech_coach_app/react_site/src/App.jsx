@@ -1750,12 +1750,16 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
   async function getOrInitStream() {
     if (streamRef.current && streamRef.current.active) {
-      return streamRef.current;
+      const tracks = streamRef.current.getTracks();
+      if (tracks.length > 0 && tracks.some((t) => t.readyState === 'live')) {
+        return streamRef.current;
+      }
     }
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
+        autoGainControl: true,
         sampleRate: 16000
       }
     });
@@ -1769,15 +1773,30 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     heardRef.current = '';
 
     try {
-      const stream = passedStream || (await getOrInitStream());
-      
-      // Use lightweight MediaRecorder on active stream
+      const isMediaStream = passedStream && typeof passedStream.getTracks === 'function' && passedStream.active;
+      const stream = isMediaStream ? passedStream : (await getOrInitStream());
+
+      // Safe MediaRecorder creation with MIME type fallback
+      let mediaRecorder;
       const chunks = [];
-      const mediaRecorder = new MediaRecorder(stream);
+      try {
+        let mimeType = 'audio/webm';
+        if (typeof MediaRecorder.isTypeSupported === 'function') {
+          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+          } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+          }
+        }
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+      } catch {
+        mediaRecorder = new MediaRecorder(stream);
+      }
+
       mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunks.push(e.data);
       };
-      
+
       recorderRef.current = {
         mediaRecorder,
         chunks,
@@ -1794,7 +1813,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
           })
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(100);
       setStatus('recording');
       setRecordingSeconds(0);
 
@@ -1837,6 +1856,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         } catch {}
       }
     } catch (e) {
+      console.error('Diagnostic startRecording error:', e);
       setError(e.message || 'Microphone access failed.');
       setStatus('idle');
     }
@@ -1844,7 +1864,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
   async function stopAndEvaluate() {
     if (!recorderRef.current || status === 'processing') return;
-    
+
     if (timerRef.current) clearInterval(timerRef.current);
     if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
     if (recognitionRef.current) {
@@ -1919,7 +1939,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         word: currentQ.word,
         pronounce: currentQ.pronounce,
         skill: currentQ.skill || 'consonants',
-        score: calcScore, // 0 - 100
+        score: calcScore,
         detected: detected,
         spoken_word: spokenWord,
         diagnosis_note: diagnosisNote,
@@ -1935,15 +1955,65 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         const nextIdx = currentIndex + 1;
         setCurrentIndex(nextIdx);
         setRecordingSeconds(0);
-        // Instant seamless transition: immediately start recording on warm stream!
-        startRecording(streamRef.current);
+        setStatus('idle');
+        // Auto-advance to next question with brief pause
+        setTimeout(() => {
+          startRecording(streamRef.current);
+        }, 300);
       } else {
         cleanupAll();
         generateFinalReport(nextResults);
       }
-    } catch {
-      setError('Evaluation error.');
+    } catch (err) {
+      console.error('Diagnostic evaluation error:', err);
+      setError('Evaluation error. Please try again.');
       setStatus('idle');
+    }
+  }
+
+  function handleSkip() {
+    if (status === 'processing') return;
+    if (recorderRef.current) {
+      try { recorderRef.current.stop(); } catch {}
+      recorderRef.current = null;
+    }
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (silenceDetectRef.current) cancelAnimationFrame(silenceDetectRef.current);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+
+    const currentQ = questions[currentIndex] || FULL_DIAGNOSTIC_15[0];
+    const skippedData = {
+      qNum: currentIndex + 1,
+      display_name: currentQ.display_name,
+      sound: currentQ.sound,
+      word: currentQ.word,
+      pronounce: currentQ.pronounce,
+      skill: currentQ.skill || 'consonants',
+      score: 0,
+      detected: false,
+      spoken_word: '',
+      diagnosis_note: 'Skipped question',
+      improvement_tip: DIAGNOSTIC_IMPROVEMENT_TIPS[currentQ.sound] || '',
+      spoken: []
+    };
+    const nextResults = [...results, skippedData];
+    setResults(nextResults);
+    setLiveHeard('');
+
+    if (currentIndex + 1 < questions.length) {
+      const nextIdx = currentIndex + 1;
+      setCurrentIndex(nextIdx);
+      setRecordingSeconds(0);
+      setStatus('idle');
+      setTimeout(() => {
+        startRecording(streamRef.current);
+      }, 300);
+    } else {
+      cleanupAll();
+      generateFinalReport(nextResults);
     }
   }
 
@@ -2251,39 +2321,33 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               <button 
                 type="button"
                 className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
-                onClick={status === 'recording' ? stopAndEvaluate : startRecording}
+                onClick={() => {
+                  if (status === 'recording') {
+                    stopAndEvaluate();
+                  } else if (status !== 'processing') {
+                    startRecording();
+                  }
+                }}
                 disabled={status === 'processing'}
+                title={status === 'recording' ? 'Tap to Stop' : 'Tap to Speak Word'}
               >
                 {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
               </button>
 
               <div className="mic-timer-label">
-                {status === 'recording' ? `Recording (${recordingSeconds}s) — Auto-stops when you pause` : 'Tap to Speak Word'}
+                {status === 'recording' 
+                  ? `Recording (${recordingSeconds}s) — Auto-stops when you pause` 
+                  : status === 'processing'
+                  ? '⚡ Analyzing pronunciation with Groq...'
+                  : 'Tap to Speak Word'}
               </div>
             </div>
 
             <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
               <button 
                 type="button"
-                onClick={() => {
-                  const skippedData = {
-                    qNum: currentIndex + 1,
-                    display_name: currentQ.display_name,
-                    sound: currentQ.sound,
-                    word: currentQ.word,
-                    pronounce: currentQ.pronounce,
-                    skill: currentQ.skill || 'consonants',
-                    score: 0,
-                    detected: false,
-                    spoken_word: '',
-                    diagnosis_note: 'Skipped question',
-                    spoken: []
-                  };
-                  const nextResults = [...results, skippedData];
-                  setResults(nextResults);
-                  if (currentIndex + 1 < questions.length) setCurrentIndex(currentIndex + 1);
-                  else generateFinalReport(nextResults);
-                }}
+                onClick={handleSkip}
+                disabled={status === 'processing'}
                 style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
               >
                 Skip Question ➔
