@@ -7,8 +7,10 @@ Free tier: 14,400 requests/day — more than enough for classroom pilot.
 Fallback: if GROQ_API_KEY is missing or API fails, returns None so
 callers can fall back to local faster-whisper model.
 """
+from __future__ import annotations
 import os
 import requests
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +23,7 @@ def _get_key():
     return os.getenv("GROQ_API_KEY", "")
 
 
-def transcribe_groq(audio_path: str, language: str = None) -> str | None:
+def transcribe_groq(audio_path: str, language: Optional[str] = None) -> Optional[str]:
     """
     Transcribe audio via Groq Whisper API.
 
