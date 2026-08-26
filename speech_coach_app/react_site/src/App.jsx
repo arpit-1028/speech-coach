@@ -1832,29 +1832,24 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
         spoken: spokenWord ? [spokenWord] : []
       };
 
-      setCurrentEval(evalData);
-      setStatus('answered');
+      const nextResults = [...results, evalData];
+      setResults(nextResults);
+      setLiveHeard('');
+
+      if (currentIndex + 1 < questions.length) {
+        // Move directly to next word (pure test experience — no intermediate distraction)
+        setCurrentIndex(currentIndex + 1);
+        setRecordingSeconds(0);
+        setStatus('idle');
+      } else {
+        // Test completed! Generate comprehensive final report
+        cleanupAll();
+        generateFinalReport(nextResults);
+      }
     } catch (err) {
       console.error('Diagnostic evaluation error:', err);
       setError('Evaluation error. Please tap Record to try again.');
       setStatus('idle');
-    }
-  }
-
-  function handleNext() {
-    if (!currentEval) return;
-    const nextResults = [...results, currentEval];
-    setResults(nextResults);
-    setCurrentEval(null);
-    setLiveHeard('');
-
-    if (currentIndex + 1 < questions.length) {
-      setCurrentIndex(currentIndex + 1);
-      setRecordingSeconds(0);
-      setStatus('idle');
-    } else {
-      cleanupAll();
-      generateFinalReport(nextResults);
     }
   }
 
@@ -1887,7 +1882,6 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     };
     const nextResults = [...results, skippedData];
     setResults(nextResults);
-    setCurrentEval(null);
     setLiveHeard('');
 
     if (currentIndex + 1 < questions.length) {
@@ -2189,29 +2183,12 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
               {/* Mascot */}
               <div style={{ margin: '0.5rem auto' }}>
-                <Mascot state={status === 'recording' ? 'listening' : status === 'answered' ? (currentEval?.score >= 70 ? 'crowned' : 'thinking') : 'happy'} size={72} />
+                <Mascot state={status === 'recording' ? 'listening' : 'happy'} size={72} />
               </div>
 
               {error && (
                 <div style={{ marginTop: '0.6rem', color: 'var(--coral)', fontSize: '0.82rem', fontWeight: 700 }}>
                   ⚠️ {error}
-                </div>
-              )}
-
-              {/* Instant Question Feedback after Speaking */}
-              {status === 'answered' && currentEval && (
-                <div style={{ marginTop: '0.8rem', padding: '0.75rem 1rem', background: currentEval.score >= 70 ? 'var(--bg-mint)' : 'var(--bg-rose)', border: `1px solid ${currentEval.score >= 70 ? '#A7F3D0' : '#FECDD3'}`, borderRadius: '12px', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: currentEval.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)' }}>
-                      {currentEval.score}%
-                    </span>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                      {currentEval.score >= 70 ? 'Great pronunciation!' : 'Needs Practice'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                    {currentEval.diagnosis_note}
-                  </div>
                 </div>
               )}
 
@@ -2222,65 +2199,45 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
               )}
             </div>
 
-            {/* Action Area: Simple & Clear */}
-            {status === 'answered' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1.25rem' }}>
-                <button
+            {/* Mic Action Area */}
+            <div>
+              <div className="mic-action-area">
+                <button 
                   type="button"
-                  className="btn-3d btn-3d-primary"
-                  onClick={handleNext}
-                  style={{ width: '100%', padding: '0.9rem', fontSize: '1.05rem' }}
+                  className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
+                  onClick={() => {
+                    if (status === 'recording') {
+                      stopAndEvaluate();
+                    } else if (status !== 'processing') {
+                      startRecording();
+                    }
+                  }}
+                  disabled={status === 'processing'}
+                  title={status === 'recording' ? 'Tap to Stop' : 'Tap to Speak Word'}
                 >
-                  {currentIndex + 1 < questions.length ? 'Next Question ➔' : 'View Final Report ➔'}
+                  {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
                 </button>
-                <button
-                  type="button"
-                  onClick={startRecording}
-                  style={{ background: 'none', border: 'none', color: 'var(--royal-violet)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
-                >
-                  🔁 Re-record this word
-                </button>
-              </div>
-            ) : (
-              <div>
-                <div className="mic-action-area">
-                  <button 
-                    type="button"
-                    className={`large-mic-btn ${status === 'recording' ? 'recording' : ''}`}
-                    onClick={() => {
-                      if (status === 'recording') {
-                        stopAndEvaluate();
-                      } else if (status !== 'processing') {
-                        startRecording();
-                      }
-                    }}
-                    disabled={status === 'processing'}
-                    title={status === 'recording' ? 'Tap to Stop' : 'Tap to Speak Word'}
-                  >
-                    {status === 'recording' ? '⏹' : status === 'processing' ? '⏳' : '🎙️'}
-                  </button>
 
-                  <div className="mic-timer-label">
-                    {status === 'recording' 
-                      ? `Recording (${recordingSeconds}s) — Tap ⏹ when done` 
-                      : status === 'processing'
-                      ? '⚡ Analyzing with Groq AI...'
-                      : 'Tap to Speak Word'}
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
-                  <button 
-                    type="button"
-                    onClick={handleSkip}
-                    disabled={status === 'processing'}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
-                  >
-                    Skip Question ➔
-                  </button>
+                <div className="mic-timer-label">
+                  {status === 'recording' 
+                    ? `Recording (${recordingSeconds}s) — Tap ⏹ when done` 
+                    : status === 'processing'
+                    ? '⚡ Analyzing & loading next question...'
+                    : 'Tap to Speak Word'}
                 </div>
               </div>
-            )}
+
+              <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
+                <button 
+                  type="button"
+                  onClick={handleSkip}
+                  disabled={status === 'processing'}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  Skip Question ➔
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
