@@ -12,11 +12,11 @@ export const supabase = isSupabaseConfigured
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
-// Library ID validation: e.g. "2428CSEAIML994"
+// University Roll No. / Library ID validation: supports numeric (e.g. "2100290100045") and alphanumeric (e.g. "2428CSEAIML994")
 export function validateLibraryId(libraryId) {
   if (!libraryId) return false;
   const clean = libraryId.trim().toUpperCase();
-  return /^[A-Z0-9]{6,20}$/.test(clean);
+  return /^[A-Z0-9_-]{4,30}$/.test(clean);
 }
 
 // Convert Library ID to a valid email format for Supabase auth

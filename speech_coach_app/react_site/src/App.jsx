@@ -2246,7 +2246,22 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 }
 
 // ── TEACHER / FACULTY ANALYTICS DASHBOARD ───────────────────────────────────
-const BRANCHES = ['ALL', 'CSE', 'IT', 'CS', 'CSIT', 'CSE (AI)', 'CSE(AIML)', 'MECH', 'ECE', 'ELCE', 'EEE'];
+const BRANCHES = [
+  'ALL',
+  'CSE',
+  'CSE (AI)',
+  'CSE (AIML)',
+  'CSE (DS)',
+  'CSE (Cyber Security)',
+  'IT',
+  'CS',
+  'CSIT',
+  'ECE',
+  'MECH',
+  'EEE',
+  'ELCE',
+  'CIVIL'
+];
 
 function TeacherDashboard({ teacher, onSignOut }) {
   const [reports, setReports] = useState([]);
@@ -2254,6 +2269,7 @@ function TeacherDashboard({ teacher, onSignOut }) {
   const [selectedBranch, setSelectedBranch] = useState('ALL');
   const [sortBy, setSortBy] = useState('xp');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   useEffect(() => {
     getAllStudentReports().then((data) => {
@@ -2267,12 +2283,16 @@ function TeacherDashboard({ teacher, onSignOut }) {
     if (selectedBranch !== 'ALL') list = list.filter((r) => r.branch === selectedBranch);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = list.filter((r) => r.name.toLowerCase().includes(q) || r.libraryId.toLowerCase().includes(q));
+      list = list.filter((r) => 
+        (r.name && r.name.toLowerCase().includes(q)) || 
+        (r.libraryId && r.libraryId.toLowerCase().includes(q)) ||
+        (r.email && r.email.toLowerCase().includes(q))
+      );
     }
     list.sort((a, b) => {
       if (sortBy === 'accuracy') return b.avgScore - a.avgScore;
       if (sortBy === 'passed') return b.completedCount - a.completedCount;
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
       return b.xp - a.xp;
     });
     return list;
@@ -2280,7 +2300,7 @@ function TeacherDashboard({ teacher, onSignOut }) {
 
   const collegeTop3 = useMemo(() => [...reports].sort((a, b) => b.avgScore - a.avgScore).slice(0, 3), [reports]);
   const totalStudents = reports.length;
-  const avgClassAcc = totalStudents > 0 ? Math.round(reports.reduce((s, r) => s + r.avgScore, 0) / totalStudents) : 0;
+  const avgClassAcc = totalStudents > 0 ? Math.round(reports.reduce((s, r) => s + (r.avgScore || 0), 0) / totalStudents) : 0;
   const topPerformer = collegeTop3[0];
 
   return (
@@ -2290,13 +2310,13 @@ function TeacherDashboard({ teacher, onSignOut }) {
           <Mascot state="crowned" size={40} />
           <div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--royal-violet)' }}>Sapphire — Faculty Analytics Dashboard</h2>
-            <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>👨‍🏫 {teacher.name} • Class Analytics</small>
+            <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>👨‍🏫 {teacher.name} • KIET Real-Time Analytics</small>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: '0.6rem' }}>
           <button className="btn-3d btn-3d-success btn-sm" onClick={() => exportCSVReport(filtered)}>
-            📥 Export CSV
+            📥 Export CSV Report
           </button>
           <button className="btn-3d btn-sm" onClick={onSignOut} style={{ background: 'var(--coral)', color: '#fff' }}>
             Sign Out
@@ -2308,7 +2328,7 @@ function TeacherDashboard({ teacher, onSignOut }) {
         {/* Metric Cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
           <div className="stat-widget-card">
-            <div className="stat-widget-label">Total Enrolled</div>
+            <div className="stat-widget-label">Total Students Enrolled</div>
             <div className="stat-widget-val">{totalStudents}</div>
           </div>
           <div className="stat-widget-card">
@@ -2316,29 +2336,39 @@ function TeacherDashboard({ teacher, onSignOut }) {
             <div className="stat-widget-val" style={{ color: 'var(--emerald)' }}>{avgClassAcc}%</div>
           </div>
           <div className="stat-widget-card">
-            <div className="stat-widget-label">Top Student</div>
+            <div className="stat-widget-label">Top Performer</div>
             <div className="stat-widget-val" style={{ color: 'var(--gold)' }}>{topPerformer?.name?.split(' ')[0] || '—'}</div>
           </div>
           <div className="stat-widget-card">
-            <div className="stat-widget-label">Target Stage</div>
-            <div className="stat-widget-val" style={{ color: 'var(--royal-violet)' }}>Stage 3</div>
+            <div className="stat-widget-label">Active Batch</div>
+            <div className="stat-widget-val" style={{ color: 'var(--royal-violet)' }}>KIET 2026</div>
           </div>
         </div>
 
         {/* Filters */}
-        <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '0.8rem', borderRadius: '14px', border: '1px solid var(--border-light)' }}>
+        <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '0.8rem', borderRadius: '14px', border: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
           <input 
             value={searchQuery} 
             onChange={(e) => setSearchQuery(e.target.value)} 
-            placeholder="🔍 Search student name or ID..."
-            style={{ flex: 1, padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)', fontFamily: 'var(--font-sans)' }}
+            placeholder="🔍 Search student name, Roll No., or email..."
+            style={{ flex: 1, minWidth: '220px', padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)', fontFamily: 'var(--font-sans)' }}
           />
           <select 
             value={selectedBranch} 
             onChange={(e) => setSelectedBranch(e.target.value)}
             style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}
           >
-            {BRANCHES.map(b => <option key={b} value={b}>{b === 'ALL' ? 'All Branches' : b}</option>)}
+            {BRANCHES.map(b => <option key={b} value={b}>{b === 'ALL' ? 'All Engineering Branches' : b}</option>)}
+          </select>
+          <select 
+            value={sortBy} 
+            onChange={(e) => setSortBy(e.target.value)}
+            style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}
+          >
+            <option value="xp">Sort by Total XP</option>
+            <option value="accuracy">Sort by Accuracy %</option>
+            <option value="passed">Sort by Questions Passed</option>
+            <option value="name">Sort by Student Name</option>
           </select>
         </div>
 
@@ -2348,32 +2378,123 @@ function TeacherDashboard({ teacher, onSignOut }) {
             <thead>
               <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)', textAlign: 'left' }}>
                 <th style={{ padding: '0.8rem 1rem' }}>#</th>
-                <th style={{ padding: '0.8rem 1rem' }}>Student</th>
-                <th style={{ padding: '0.8rem 1rem' }}>Library ID</th>
+                <th style={{ padding: '0.8rem 1rem' }}>Student Name</th>
+                <th style={{ padding: '0.8rem 1rem' }}>Roll No. / Lib ID</th>
                 <th style={{ padding: '0.8rem 1rem' }}>Branch</th>
-                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>XP</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Total XP</th>
                 <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Passed</th>
                 <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Avg Score</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((st, i) => (
-                <tr key={st.libraryId || i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '0.8rem 1rem', color: 'var(--text-muted)' }}>{i + 1}</td>
-                  <td style={{ padding: '0.8rem 1rem', fontWeight: 700 }}>{st.avatar} {st.name}</td>
-                  <td style={{ padding: '0.8rem 1rem', fontFamily: 'monospace', color: 'var(--royal-violet)' }}>{st.libraryId}</td>
-                  <td style={{ padding: '0.8rem 1rem' }}>{st.branch}</td>
-                  <td style={{ padding: '0.8rem 1rem', textAlign: 'center', color: 'var(--gold-dark)', fontWeight: 800 }}>{st.xp}</td>
-                  <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>{st.completedCount}/100</td>
-                  <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, color: st.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
-                    {st.avgScore}%
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    No students found matching current filter.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((st, i) => (
+                  <tr key={st.libraryId || i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '0.8rem 1rem', color: 'var(--text-muted)' }}>{i + 1}</td>
+                    <td style={{ padding: '0.8rem 1rem', fontWeight: 700 }}>
+                      <div>{st.avatar} {st.name}</div>
+                      <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{st.email}</small>
+                    </td>
+                    <td style={{ padding: '0.8rem 1rem', fontFamily: 'monospace', color: 'var(--royal-violet)', fontWeight: 700 }}>
+                      {st.libraryId}
+                    </td>
+                    <td style={{ padding: '0.8rem 1rem' }}>
+                      <span className="badge-chip" style={{ background: 'var(--bg-lavender)', color: 'var(--royal-violet-deep)', fontSize: '0.75rem' }}>
+                        {st.branch}
+                      </span>
+                    </td>
+                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center', color: 'var(--gold-dark)', fontWeight: 800 }}>
+                      {st.xp}
+                    </td>
+                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
+                      {st.completedCount}/100
+                    </td>
+                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, color: st.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                      {st.avgScore}%
+                    </td>
+                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
+                      <button 
+                        type="button" 
+                        className="btn-3d btn-3d-white btn-sm"
+                        onClick={() => setSelectedStudent(st)}
+                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      >
+                        🔍 View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Student Drilldown Modal */}
+      {selectedStudent && (
+        <div className="modal-backdrop" onClick={() => setSelectedStudent(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--royal-violet)' }}>
+                  {selectedStudent.avatar} {selectedStudent.name}
+                </h3>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Roll No: {selectedStudent.libraryId} • Branch: {selectedStudent.branch}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Email: {selectedStudent.email}
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setSelectedStudent(null)}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
+              <div style={{ padding: '0.8rem', background: 'var(--bg-lavender)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Total XP</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--royal-violet)' }}>{selectedStudent.xp}</div>
+              </div>
+              <div style={{ padding: '0.8rem', background: selectedStudent.avgScore >= 70 ? 'var(--bg-mint)' : 'var(--bg-rose)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Avg Pronunciation</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: selectedStudent.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                  {selectedStudent.avgScore}%
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
+                Weakest Sounds Needing Attention:
+              </div>
+              <div style={{ padding: '0.6rem 0.8rem', background: 'var(--bg-surface-subtle)', borderRadius: '10px', fontSize: '0.85rem' }}>
+                {selectedStudent.weakestSounds || 'All evaluated sounds meet target threshold! ✓'}
+              </div>
+            </div>
+
+            <button 
+              type="button" 
+              className="btn-3d btn-3d-primary"
+              onClick={() => setSelectedStudent(null)}
+              style={{ width: '100%', padding: '0.7rem' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2464,9 +2585,12 @@ function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', textAlign: 'left' }}>
           {authMode === 'teacher' && (
             <>
+              <div style={{ padding: '0.6rem 0.8rem', background: 'var(--bg-lavender)', borderRadius: '10px', fontSize: '0.78rem', color: 'var(--royal-violet-deep)', fontWeight: 700 }}>
+                🔒 Authorized Faculty Instructor Access Only
+              </div>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Faculty ID</label>
-                <input name="teacherId" required placeholder="e.g. FACULTY01" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem', fontFamily: 'var(--font-sans)' }} />
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Faculty ID / Email</label>
+                <input name="teacherId" required placeholder="e.g. faculty@kiet.edu" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem', fontFamily: 'var(--font-sans)' }} />
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Password</label>
@@ -2482,13 +2606,13 @@ function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
                 <input name="name" required placeholder="Arpit Agarwal" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }} />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>College Email</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>College Email ID (@kiet.edu)</label>
                 <input name="email" type="email" required placeholder="xyz.2428cse112@kiet.edu" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }} />
               </div>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Branch</label>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Engineering Branch</label>
                 <select name="branch" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem' }}>
-                  {['CSE','IT','CS','CSIT','CSE (AI)','CSE(AIML)','MECH','ECE','ELCE','EEE'].map(b => (
+                  {BRANCHES.filter(b => b !== 'ALL').map(b => (
                     <option key={b} value={b}>{b}</option>
                   ))}
                 </select>
@@ -2520,8 +2644,8 @@ function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
           {(authMode === 'login' || authMode === 'register') && (
             <>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>College Library ID</label>
-                <input name="libraryId" required placeholder="Ex: 2428CSEAIML994" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem', textTransform: 'uppercase' }} />
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>University Roll No. / Library ID</label>
+                <input name="libraryId" required placeholder="Ex: 2100290100045 or 2428CSEAIML994" style={{ width: '100%', padding: '0.65rem 0.85rem', borderRadius: '10px', border: '1px solid var(--border-light)', marginTop: '0.2rem', textTransform: 'uppercase' }} />
               </div>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-secondary)' }}>Password</label>
@@ -2530,11 +2654,11 @@ function AuthScreen({ onAuthSuccess, onTeacherSuccess }) {
             </>
           )}
 
-          {authError && <div style={{ color: '#BE123C', fontSize: '0.82rem' }}>{authError}</div>}
-          {resetMsg && <div style={{ color: 'var(--emerald-dark)', fontSize: '0.82rem' }}>{resetMsg}</div>}
+          {authError && <div style={{ color: '#BE123C', fontSize: '0.82rem', fontWeight: 700 }}>⚠️ {authError}</div>}
+          {resetMsg && <div style={{ color: 'var(--emerald-dark)', fontSize: '0.82rem', fontWeight: 700 }}>{resetMsg}</div>}
 
           <button className="btn-3d btn-3d-primary" type="submit" disabled={authLoading} style={{ marginTop: '0.5rem' }}>
-            {authLoading ? 'Processing...' : authMode === 'register' ? 'Register & Begin Quest 🚀' : 'Start Your Journey 🚀'}
+            {authLoading ? 'Processing...' : authMode === 'register' ? 'Register & Begin Quest 🚀' : authMode === 'teacher' ? 'Access Faculty Portal 👨‍🏫' : 'Start Your Journey 🚀'}
           </button>
         </form>
       </div>

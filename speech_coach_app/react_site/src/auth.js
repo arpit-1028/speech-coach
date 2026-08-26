@@ -24,15 +24,28 @@ export function loadTeacherSession() {
 }
 
 // ── TEACHER AUTH ─────────────────────────────────────────────────────────────
-// Simple: any teacher ID + any password works (as per requirement for now)
-export function signInTeacher({ teacherId, password }) {
-  if (!teacherId || !teacherId.trim()) throw new Error('Please enter a Teacher ID.');
-  if (!password || !password.trim()) throw new Error('Please enter a password.');
+// Restricted to authorized instructors with secure credentials
+const AUTHORIZED_TEACHER_IDS = ['FACULTY@KIET.EDU', 'KIET_FACULTY', 'FACULTY01', 'TEACHER@KIET.EDU', 'FACULTY'];
+const FACULTY_SECURE_PASS    = 'Kiet@Faculty2026';
 
-  const id = teacherId.trim().toUpperCase();
+export function signInTeacher({ teacherId, password }) {
+  if (!teacherId || !teacherId.trim()) throw new Error('Please enter a Faculty ID / Email.');
+  if (!password || !password.trim()) throw new Error('Please enter the faculty password.');
+
+  const cleanId = teacherId.trim().toUpperCase();
+  const cleanPass = password.trim();
+
+  const isIdValid = AUTHORIZED_TEACHER_IDS.includes(cleanId) || cleanId.endsWith('@KIET.EDU');
+  const isPassValid = cleanPass === FACULTY_SECURE_PASS;
+
+  if (!isIdValid || !isPassValid) {
+    throw new Error('Access denied. Invalid Faculty ID or Password. Only authorized instructors can access the dashboard.');
+  }
+
   const teacher = {
-    id,
-    name: `Faculty (${id})`,
+    id: cleanId,
+    name: 'KIET Faculty Instructor',
+    email: teacherId.trim().toLowerCase(),
     role: 'teacher',
     loginAt: new Date().toISOString()
   };
@@ -53,10 +66,10 @@ export async function signUpUser({ name, email, libraryId, branch, password, ava
   const cleanAvatar    = avatar || '👨‍🎓';
 
   if (!validateLibraryId(cleanLibraryId)) {
-    throw new Error('Invalid Library ID format. Example: 2428CSEAIML994');
+    throw new Error('Please enter a valid University Roll No. or Library ID (e.g. 2100290100045 or 2428CSEAIML994).');
   }
-  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-    throw new Error('Please enter a valid College Email ID (e.g. xyz.2428cse112@kiet.edu)');
+  if (!cleanEmail || !cleanEmail.endsWith('@kiet.edu')) {
+    throw new Error('Only @kiet.edu college email IDs are allowed for registration (e.g. xyz.2428cse112@kiet.edu).');
   }
   if (!password || password.length < 6) {
     throw new Error('Password must be at least 6 characters.');
@@ -109,7 +122,7 @@ export async function signInUser({ libraryId, password }) {
   const cleanLibraryId = cleanInput.toUpperCase();
 
   if (!isEmail && !validateLibraryId(cleanLibraryId)) {
-    throw new Error('Invalid Library ID format. Example: 2428CSEAIML994');
+    throw new Error('Please enter a valid University Roll No. or Library ID.');
   }
   if (!password) throw new Error('Please enter your password.');
 
