@@ -263,13 +263,19 @@ export function exportCSVReport(reports) {
 
 // ── PRIVATE HELPERS ───────────────────────────────────────────────────────────
 function buildReport(user, progress) {
-  const completedEntries = Object.entries(progress.completed || {});
+  const completedObj     = progress.completed || {};
+  const diagnosticData   = completedObj.diagnostic || progress.diagnosticReport || null;
+  const diagnosticScore  = diagnosticData?.score || diagnosticData?.overall_score || progress.diagnosticScore || 0;
+  
+  const completedEntries = Object.entries(completedObj).filter(([k]) => k !== 'diagnostic');
   const passedEntries    = completedEntries.filter(([, c]) => (c.bestScore || 0) >= 70);
   const completedCount   = passedEntries.length;
-  const scores           = completedEntries.map(([, c]) => c.bestScore || 0);
-  const avgScore         = scores.length > 0
-    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-    : 0;
+  const questScores      = completedEntries.map(([, c]) => c.bestScore || 0);
+  
+  // Avg score considers quest scores if available, or diagnostic score if only diagnostic was taken
+  const avgScore = questScores.length > 0
+    ? Math.round(questScores.reduce((a, b) => a + b, 0) / questScores.length)
+    : (diagnosticScore > 0 ? diagnosticScore : 0);
 
   const weakCounts = {};
   (progress.attempts || []).forEach((att) => {
@@ -303,9 +309,11 @@ function buildReport(user, progress) {
     streak:      progress.streak || 0,
     completedCount,
     avgScore,
+    diagnosticScore,
+    diagnosticReport: diagnosticData?.report || diagnosticData || null,
     weakestSounds: weakList.join(', ') || '—',
     weakestSoundsList: weakList,
-    lastActive:  progress.lastPracticeDate || (user.joinedAt ? user.joinedAt.slice(0, 10) : '—'),
+    lastActive:  progress.lastPracticeDate || diagnosticData?.date?.slice(0, 10) || (user.joinedAt ? user.joinedAt.slice(0, 10) : '—'),
     // Drilldown data
     levelDetail,
     recentAttempts: (progress.attempts || []).slice(0, 12)

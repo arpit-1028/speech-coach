@@ -205,6 +205,14 @@ export default function App() {
     }
   }, [screen, translateMode, interviewTopic]);
 
+  useEffect(() => {
+    function handleOpenDiag() {
+      setShowDiagnosticModal(true);
+    }
+    window.addEventListener('open-diagnostic-report', handleOpenDiag);
+    return () => window.removeEventListener('open-diagnostic-report', handleOpenDiag);
+  }, []);
+
   function triggerConfetti() {
     if (confettiEffectRef.current) {
       confettiEffectRef.current.start();
@@ -739,16 +747,44 @@ export default function App() {
                       <div className="plan-item-icon">🎯</div>
                       <div>
                         <div className="plan-item-title">15-Question Diagnostic Test</div>
-                        <div className="plan-item-reward">+100 XP Reward</div>
+                        <div className="plan-item-reward">
+                          {(progress.diagnosticScore || progress.completed?.diagnostic?.score) ? (
+                            <span style={{ color: (progress.diagnosticScore || progress.completed?.diagnostic?.score) >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)', fontWeight: 800 }}>
+                              Score: {progress.diagnosticScore || progress.completed?.diagnostic?.score}% (Completed ✓)
+                            </span>
+                          ) : (
+                            '+100 XP Reward'
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <button 
-                      className="btn-3d btn-3d-primary btn-sm"
-                      type="button"
-                      onClick={() => setShowDiagnosticModal(true)}
-                    >
-                      Take Test
-                    </button>
+                    {(progress.diagnosticScore || progress.completed?.diagnostic?.score) ? (
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button 
+                          className="btn-3d btn-3d-success btn-sm"
+                          type="button"
+                          onClick={() => setShowDiagnosticModal(true)}
+                        >
+                          📊 View Report
+                        </button>
+                        <button 
+                          className="btn-3d btn-3d-white btn-sm"
+                          type="button"
+                          onClick={() => setShowDiagnosticModal(true)}
+                          title="Retake Diagnostic Test"
+                        >
+                          🔁
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        className="btn-3d btn-3d-primary btn-sm"
+                        type="button"
+                        onClick={() => setShowDiagnosticModal(true)}
+                      >
+                        Take Test
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1488,6 +1524,29 @@ function ProfileModal({ user, progress, completedCount, weakSounds, onClose, onS
           </p>
         </div>
 
+        {/* Diagnostic Assessment Stat Card */}
+        {(progress.diagnosticScore || progress.completed?.diagnostic?.score) && (
+          <div style={{ background: 'var(--bg-lavender)', border: '1px solid #C7D2FE', borderRadius: '14px', padding: '0.8rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--royal-violet-deep)', textTransform: 'uppercase' }}>Diagnostic Score</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--royal-violet)' }}>
+                🎯 {progress.diagnosticScore || progress.completed?.diagnostic?.score}%
+              </div>
+            </div>
+            <button 
+              type="button" 
+              className="btn-3d btn-3d-primary btn-sm"
+              onClick={() => {
+                onClose();
+                // trigger diagnostic report
+                window.dispatchEvent(new CustomEvent('open-diagnostic-report'));
+              }}
+            >
+              View Report ➔
+            </button>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '0.8rem', marginTop: '1.25rem' }}>
           <button className="btn-3d btn-3d-white" type="button" onClick={onClose} style={{ flex: 1 }}>
@@ -1649,14 +1708,13 @@ const DIAGNOSTIC_IMPROVEMENT_TIPS = {
   l: "Touch tongue tip flatly behind upper front teeth for L (ल)",
 };
 
-function DiagnosticModal({ user, progress, setProgress, onClose }) {
+function DiagnosticModal({ user, progress, setProgress, onClose, initialReport = null }) {
   const [questions, setQuestions] = useState(FULL_DIAGNOSTIC_15);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [results, setResults] = useState([]);
-  const [status, setStatus] = useState('idle'); // 'idle' | 'recording' | 'processing' | 'answered' | 'report'
-  const [currentEval, setCurrentEval] = useState(null);
+  const [status, setStatus] = useState(() => initialReport ? 'report' : 'idle'); // 'idle' | 'recording' | 'processing' | 'report'
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [report, setReport] = useState(null);
+  const [report, setReport] = useState(() => initialReport || null);
   const [error, setError] = useState('');
   const [liveHeard, setLiveHeard] = useState('');
 
@@ -1666,6 +1724,20 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
   const heardRef = useRef('');
 
   useEffect(() => {
+    // If no initial report passed, check localStorage for existing saved report
+    if (!initialReport && user?.id) {
+      const uid = user.libraryId || user.id;
+      const saved = localStorage.getItem(`sapphireDiagnosticReport:${uid}`);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.all_question_results) {
+            setReport(parsed);
+          }
+        } catch {}
+      }
+    }
+
     fetchDiagnosticQuestions()
       .then((data) => {
         if (Array.isArray(data) && data.length >= 10) {
@@ -1677,7 +1749,7 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     return () => {
       cleanupAll();
     };
-  }, []);
+  }, [initialReport, user]);
 
   function cleanupAll() {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -1691,11 +1763,20 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     }
   }
 
+  function startRetake() {
+    cleanupAll();
+    setResults([]);
+    setCurrentIndex(0);
+    setReport(null);
+    setStatus('idle');
+    setError('');
+    setLiveHeard('');
+  }
+
   async function startRecording() {
     setError('');
     setLiveHeard('');
     heardRef.current = '';
-    setCurrentEval(null);
 
     try {
       const rec = new AudioRecorder();
@@ -1900,6 +1981,33 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
       const rep = buildLocalReport(allResults);
       setReport(rep);
       setStatus('report');
+
+      // Persist Diagnostic Report locally & in Supabase
+      const uid = (user?.libraryId || user?.id || 'guest').trim().toUpperCase();
+      try {
+        localStorage.setItem(`sapphireDiagnosticReport:${uid}`, JSON.stringify(rep));
+      } catch {}
+
+      const updatedProgress = {
+        ...progress,
+        diagnosticScore: rep.overall_score,
+        diagnosticReport: rep,
+        completed: {
+          ...progress.completed,
+          diagnostic: {
+            score: rep.overall_score,
+            date: new Date().toISOString(),
+            report: rep
+          }
+        }
+      };
+      setProgress(updatedProgress);
+      localStorage.setItem(`sapphireSpeechCoachProgress:${uid}`, JSON.stringify(updatedProgress));
+      
+      // Sync to cloud
+      import('./supabase.js').then(({ upsertStudentProgress }) => {
+        upsertStudentProgress(uid, updatedProgress).catch(() => {});
+      });
     } catch {
       setError('Failed to generate report.');
       setStatus('idle');
@@ -1992,11 +2100,24 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
     const updated = {
       ...progress,
       xp: Math.max(progress.xp || 0, scoreVal * 5),
-      completed: updatedCompleted
+      diagnosticScore: scoreVal,
+      diagnosticReport: report,
+      completed: {
+        ...updatedCompleted,
+        diagnostic: {
+          score: scoreVal,
+          date: new Date().toISOString(),
+          report: report
+        }
+      }
     };
 
+    const uid = (user?.libraryId || user?.id || 'guest').trim().toUpperCase();
     setProgress(updated);
-    localStorage.setItem(`sapphireSpeechCoachProgress:${user?.id || 'guest'}`, JSON.stringify(updated));
+    localStorage.setItem(`sapphireSpeechCoachProgress:${uid}`, JSON.stringify(updated));
+    import('./supabase.js').then(({ upsertStudentProgress }) => {
+      upsertStudentProgress(uid, updated).catch(() => {});
+    });
     onClose();
   }
 
@@ -2019,163 +2140,172 @@ function DiagnosticModal({ user, progress, setProgress, onClose }) {
 
         {/* ── DETAILED REPORT VIEW ── */}
         {status === 'report' && report ? (
-          <div>
-            <div style={{ background: 'var(--bg-lavender)', border: '1.5px solid #C7D2FE', borderRadius: '20px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--royal-violet)', textTransform: 'uppercase' }}>Overall Diagnostic Score</span>
-              <div style={{ fontSize: '2.8rem', fontWeight: 900, color: report.overall_score >= 70 ? 'var(--emerald-dark)' : 'var(--gold-dark)', margin: '0.2rem 0' }}>
+          <div className="diagnostic-report-card" style={{ maxHeight: '70vh', overflowY: 'auto', paddingRight: '0.4rem' }}>
+            {/* Overall Score Badge */}
+            <div style={{ textAlign: 'center', padding: '1.25rem', background: 'var(--bg-lavender)', borderRadius: '16px', marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--royal-violet-deep)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Your Overall Pronunciation Score
+              </div>
+              <div style={{ fontSize: '3rem', fontWeight: 900, color: 'var(--royal-violet)', margin: '0.2rem 0' }}>
                 {report.overall_score}%
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 800 }}>
-                {report.overall_score >= 85 ? '🌟 Advanced Pronunciation Mastery' : report.overall_score >= 65 ? '👍 Intermediate Communication Skills' : '🎯 Foundation Level — Recommended Stage 1'}
+              <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                {report.overall_score >= 85 
+                  ? '🌟 Advanced Pronunciation Mastery' 
+                  : report.overall_score >= 70 
+                  ? '🎯 Good Speaking Foundation (Minor Accent Improvements Needed)' 
+                  : '🌱 Foundational Practice Recommended'}
               </div>
             </div>
 
             {/* Skill Breakdown */}
             <div style={{ marginBottom: '1.25rem' }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                Phoneme Skill Breakdown
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.6rem' }}>
+                📊 Core Sound Breakdown
               </h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-                {Object.entries(report.pronunciation_scores || {}).map(([skill, val]) => (
-                  <div key={skill} style={{ background: 'var(--bg-surface-subtle)', padding: '0.6rem 0.8rem', borderRadius: '12px', border: '1px solid var(--border-light)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.25rem' }}>
-                      <span style={{ textTransform: 'capitalize' }}>{skill.replace('_', ' ')}</span>
-                      <span style={{ color: val >= 70 ? 'var(--emerald-dark)' : 'var(--coral)', fontWeight: 800 }}>{val}%</span>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.6rem' }}>
+                {Object.entries(report.pronunciation_scores || {}).map(([skill, sc]) => {
+                  const labelMap = {
+                    consonants: 'Consonants (m, b, s, ch, j, z)',
+                    th_sounds: 'TH Sounds (थ/द)',
+                    vw_confusion: 'V vs W (व/वा)',
+                    rl_confusion: 'R vs L (र/ल)',
+                    sh_confusion: 'SH Sound (श/स)',
+                    vowels: 'Vowels'
+                  };
+                  return (
+                    <div key={skill} style={{ padding: '0.6rem 0.8rem', background: 'var(--bg-surface-subtle)', borderRadius: '12px', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                        {labelMap[skill] || skill}
+                      </div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: sc >= 70 ? 'var(--emerald-dark)' : 'var(--coral)', marginTop: '0.2rem' }}>
+                        {sc}%
+                      </div>
                     </div>
-                    <div style={{ height: '5px', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${val}%`, background: val >= 70 ? 'var(--emerald)' : 'var(--coral)' }} />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
-            {/* Detailed Per-Question Breakdown List */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-                Detailed Question-by-Question Results ({results.length}/15)
-              </h4>
-              <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: '14px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)', textAlign: 'left' }}>
-                      <th style={{ padding: '0.5rem 0.6rem' }}>Q#</th>
-                      <th style={{ padding: '0.5rem 0.6rem' }}>Target</th>
-                      <th style={{ padding: '0.5rem 0.6rem' }}>Sound</th>
-                      <th style={{ padding: '0.5rem 0.6rem' }}>You Said</th>
-                      <th style={{ padding: '0.5rem 0.6rem' }}>Feedback &amp; How to Improve</th>
-                      <th style={{ padding: '0.5rem 0.6rem', textAlign: 'center' }}>Score</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', background: r.score >= 70 ? 'transparent' : 'rgba(244, 63, 94, 0.06)' }}>
-                        <td style={{ padding: '0.5rem 0.6rem', fontWeight: 800 }}>{i + 1}</td>
-                        <td style={{ padding: '0.5rem 0.6rem', fontWeight: 800, color: 'var(--royal-violet-deep)' }}>"{r.word}"</td>
-                        <td style={{ padding: '0.5rem 0.6rem' }}>{formatPhoneme(r.sound)}</td>
-                        <td style={{ padding: '0.5rem 0.6rem', fontWeight: 600, color: r.spoken_word ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                          {r.spoken_word ? `"${r.spoken_word}"` : '—'}
-                        </td>
-                        <td style={{ padding: '0.5rem 0.6rem', fontSize: '0.78rem', color: r.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)', fontWeight: 600 }}>
-                          {r.diagnosis_note || (r.score >= 70 ? 'Clear pronunciation! ✓' : r.improvement_tip)}
-                        </td>
-                        <td style={{ padding: '0.5rem 0.6rem', textAlign: 'center', fontWeight: 800, color: r.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
-                          {r.score}%
-                        </td>
+            {/* 15-Question Detailed Table */}
+            {report.all_question_results && report.all_question_results.length > 0 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.6rem' }}>
+                  📋 15-Question Detailed Word Report
+                </h4>
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)' }}>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>#</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Target Word</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Sound</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Heard</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Score</th>
+                        <th style={{ padding: '0.5rem 0.6rem' }}>Diagnosis &amp; Tip</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {report.all_question_results.map((item, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)', background: item.score >= 70 ? 'rgba(16,185,129,0.03)' : 'rgba(244,63,94,0.03)' }}>
+                          <td style={{ padding: '0.5rem 0.6rem', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                          <td style={{ padding: '0.5rem 0.6rem', fontWeight: 800, color: 'var(--text-main)' }}>{item.word}</td>
+                          <td style={{ padding: '0.5rem 0.6rem', color: 'var(--royal-violet)', fontWeight: 700 }}>
+                            {formatPhonemeShort(item.sound)}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem', fontFamily: 'monospace' }}>
+                            {item.spoken_word || (item.spoken && item.spoken.join('')) || '—'}
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem' }}>
+                            <span style={{ fontWeight: 800, color: item.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                              {item.score}%
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.5rem 0.6rem', color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                            {item.diagnosis_note || item.improvement_tip || 'Clear sound ✓'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Strengths & Weaknesses */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1.25rem' }}>
+              <div style={{ padding: '0.8rem', background: 'var(--bg-mint)', borderRadius: '12px', border: '1px solid #A7F3D0' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--emerald-dark)', marginBottom: '0.3rem' }}>
+                  ✅ Your Strengths
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  {(report.strengths || ['Clear vowel pronunciation']).map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div style={{ padding: '0.8rem', background: 'var(--bg-rose)', borderRadius: '12px', border: '1px solid #FECDD3' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--coral-dark)', marginBottom: '0.3rem' }}>
+                  ⚠️ Sounds to Improve
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  {(report.weaknesses || ['TH and V/W distinctions']).map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
               </div>
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1rem' }}>
               <button 
-                onClick={applyPlacement} 
-                className="btn-3d btn-3d-success" 
-                type="button" 
-                style={{ flex: 1 }}
-              >
-                🚀 Apply Results &amp; Jump to Stage {report.overall_score >= 85 ? '3' : report.overall_score >= 65 ? '2' : '1'}
-              </button>
-              <button 
-                onClick={() => {
-                  // Generate printable PDF report
-                  const rows = results.map((r, i) => 
-                    `<tr style="border-bottom:1px solid #ddd;${r.score < 70 ? 'background:#FFF1F2;' : ''}">
-                      <td style="padding:6px 8px;font-weight:700">${i+1}</td>
-                      <td style="padding:6px 8px;font-weight:700;color:#4338CA">"${r.word}"</td>
-                      <td style="padding:6px 8px">${r.display_name || formatPhoneme(r.sound)}</td>
-                      <td style="padding:6px 8px;color:#475569">${r.spoken_word || '—'}</td>
-                      <td style="padding:6px 8px;color:#475569">${r.diagnosis_note || 'Clear'}</td>
-                      <td style="padding:6px 8px;text-align:center;font-weight:700;color:${r.score >= 70 ? '#059669' : '#F43F5E'}">${r.score}%</td>
-                    </tr>`
-                  ).join('');
-                  const skillRows = Object.entries(report.pronunciation_scores || {}).map(([skill, val]) =>
-                    `<div style="display:inline-block;margin:4px 6px;padding:6px 12px;border-radius:8px;background:${val >= 70 ? '#ECFDF5' : '#FFF1F2'};color:${val >= 70 ? '#059669' : '#F43F5E'};font-weight:700;font-size:13px">
-                      ${skill.replace('_', ' ')}: ${val}%
-                    </div>`
-                  ).join('');
-                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-                    <title>Sapphire Diagnostic Report - ${user?.name || 'Student'}</title>
-                    <style>body{font-family:'Segoe UI',sans-serif;padding:24px;color:#0F172A;max-width:800px;margin:0 auto}
-                    h1{color:#4338CA;margin-bottom:4px}table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
-                    th{background:#F1F5F9;padding:8px;text-align:left;border-bottom:2px solid #E2E8F0;font-size:12px}
-                    .score-big{font-size:48px;font-weight:900;text-align:center;margin:8px 0}
-                    .section{margin:16px 0;padding:12px;border:1px solid #E2E8F0;border-radius:12px}
-                    @media print{body{padding:12px}}</style></head><body>
-                    <h1>🎯 Sapphire Speech Coach — Diagnostic Report</h1>
-                    <p style="color:#64748B;margin-bottom:16px">Student: <strong>${user?.name || 'Student'}</strong> | ID: ${user?.libraryId || '—'} | Date: ${new Date().toLocaleDateString()}</p>
-                    <div class="section" style="text-align:center;background:#EEF2FF;border-color:#C7D2FE">
-                      <div style="font-size:12px;font-weight:700;color:#6366F1;text-transform:uppercase">Overall Diagnostic Score</div>
-                      <div class="score-big" style="color:${report.overall_score >= 70 ? '#059669' : '#D97706'}">${report.overall_score}%</div>
-                      <div style="font-weight:700">${report.overall_score >= 85 ? '🌟 Advanced' : report.overall_score >= 65 ? '👍 Intermediate' : '🎯 Foundation Level'}</div>
-                    </div>
-                    <div class="section"><h3 style="font-size:14px;margin-bottom:8px">Skill Breakdown</h3>${skillRows}</div>
-                    <div class="section"><h3 style="font-size:14px;margin-bottom:8px">Per-Question Breakdown (${results.length}/15)</h3>
-                    <table><thead><tr><th>Q#</th><th>Target</th><th>Sound</th><th>You Said</th><th>Feedback</th><th style="text-align:center">Score</th></tr></thead>
-                    <tbody>${rows}</tbody></table></div>
-                    <div class="section"><h3 style="font-size:14px;margin-bottom:6px">Recommended Next Steps</h3>
-                    <ul style="padding-left:18px;font-size:13px;color:#475569">${(report.recommended_learning_path || []).map(t => '<li style="margin:4px 0">' + t + '</li>').join('')}</ul></div>
-                    <p style="text-align:center;color:#94A3B8;font-size:11px;margin-top:20px">Generated by Sapphire Speech Coach • ${new Date().toLocaleString()}</p>
-                    </body></html>`;
-                  const blob = new Blob([html], { type: 'text/html' });
-                  const url = URL.createObjectURL(blob);
-                  const win = window.open(url, '_blank');
-                  if (win) {
-                    win.onload = () => { setTimeout(() => { win.print(); }, 300); };
-                  }
-                }}
-                className="btn-3d btn-3d-primary" 
                 type="button"
+                className="btn-3d btn-3d-success"
+                onClick={() => window.print()}
+                style={{ width: '100%', padding: '0.75rem' }}
               >
-                📄 Download Report
+                📄 Download / Print Report (PDF)
               </button>
-              <button onClick={onClose} className="btn-3d btn-3d-white" type="button">
-                Done
+
+              <button 
+                type="button"
+                className="btn-3d btn-3d-primary"
+                onClick={applyPlacement}
+                style={{ width: '100%', padding: '0.85rem' }}
+              >
+                🚀 Apply Placement &amp; Start Quest
+              </button>
+
+              <button 
+                type="button"
+                className="btn-3d btn-3d-white btn-sm"
+                onClick={startRetake}
+                style={{ width: '100%', padding: '0.6rem', color: 'var(--royal-violet)', fontWeight: 800 }}
+              >
+                🔁 Retake 15-Question Test
               </button>
             </div>
           </div>
         ) : (
-          /* ── QUESTION TEST VIEW (Clean, Simple, Intuitive) ── */
+          /* ── ACTIVE TEST QUESTION VIEW ── */
           <div>
-            {/* Progress */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
+            {/* Progress Bar */}
+            <div style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
                 <span>Question {currentIndex + 1} of {questions.length}</span>
-                <span>{progressPct}% Done</span>
+                <span>{progressPct}% Completed</span>
               </div>
-              <div style={{ height: '6px', background: 'var(--bg-surface-subtle)', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${progressPct}%`, background: 'var(--royal-violet)', transition: 'width 0.3s' }} />
+              <div className="progress-track" style={{ height: '8px', background: 'var(--border-light)', borderRadius: '4px', overflow: 'hidden' }}>
+                <div className="progress-fill" style={{ width: `${progressPct}%`, height: '100%', background: 'linear-gradient(90deg, var(--royal-violet), var(--sky-blue))', transition: 'width 0.3s ease' }} />
               </div>
             </div>
 
-            {/* Word Card */}
-            <div style={{ background: 'var(--bg-surface-subtle)', border: '1.5px solid var(--border-light)', borderRadius: '20px', padding: '2rem 1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
-              <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
+            {/* Test Word Card (No hints, no target audio — pure evaluation) */}
+            <div style={{ background: 'var(--bg-surface-subtle)', border: '1.5px solid var(--border-light)', borderRadius: '20px', padding: '1.5rem', textAlign: 'center', marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Say the word shown below:
-              </p>
+              </div>
               
               <div style={{ fontSize: '2.8rem', fontWeight: 900, color: 'var(--text-main)', margin: '0.4rem 0', letterSpacing: '-0.02em' }}>
                 {currentQ.word}
@@ -2267,9 +2397,10 @@ function TeacherDashboard({ teacher, onSignOut }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState('ALL');
-  const [sortBy, setSortBy] = useState('xp');
+  const [sortBy, setSortBy] = useState('diagnostic');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem('sapphireTheme') || 'light');
 
   useEffect(() => {
     getAllStudentReports().then((data) => {
@@ -2277,6 +2408,13 @@ function TeacherDashboard({ teacher, onSignOut }) {
       setLoading(false);
     });
   }, []);
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('sapphireTheme', next);
+  }
 
   const filtered = useMemo(() => {
     let list = [...reports];
@@ -2290,6 +2428,7 @@ function TeacherDashboard({ teacher, onSignOut }) {
       );
     }
     list.sort((a, b) => {
+      if (sortBy === 'diagnostic') return (b.diagnosticScore || b.avgScore || 0) - (a.diagnosticScore || a.avgScore || 0);
       if (sortBy === 'accuracy') return b.avgScore - a.avgScore;
       if (sortBy === 'passed') return b.completedCount - a.completedCount;
       if (sortBy === 'name') return (a.name || '').localeCompare(b.name || '');
@@ -2298,10 +2437,12 @@ function TeacherDashboard({ teacher, onSignOut }) {
     return list;
   }, [reports, selectedBranch, sortBy, searchQuery]);
 
-  const collegeTop3 = useMemo(() => [...reports].sort((a, b) => b.avgScore - a.avgScore).slice(0, 3), [reports]);
   const totalStudents = reports.length;
-  const avgClassAcc = totalStudents > 0 ? Math.round(reports.reduce((s, r) => s + (r.avgScore || 0), 0) / totalStudents) : 0;
-  const topPerformer = collegeTop3[0];
+  const diagnosedStudents = reports.filter((r) => (r.diagnosticScore || r.avgScore) > 0);
+  const avgClassAcc = diagnosedStudents.length > 0 
+    ? Math.round(diagnosedStudents.reduce((s, r) => s + (r.diagnosticScore || r.avgScore || 0), 0) / diagnosedStudents.length) 
+    : 0;
+  const topPerformer = [...reports].sort((a, b) => (b.diagnosticScore || b.avgScore || 0) - (a.diagnosticScore || a.avgScore || 0))[0];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-page)', color: 'var(--text-main)' }}>
@@ -2314,7 +2455,15 @@ function TeacherDashboard({ teacher, onSignOut }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.6rem' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+          <button 
+            className="btn-3d btn-3d-white btn-sm"
+            onClick={toggleTheme}
+            title="Toggle Light / Dark Mode"
+            style={{ fontWeight: 800 }}
+          >
+            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          </button>
           <button className="btn-3d btn-3d-success btn-sm" onClick={() => exportCSVReport(filtered)}>
             📥 Export CSV Report
           </button>
@@ -2365,8 +2514,8 @@ function TeacherDashboard({ teacher, onSignOut }) {
             onChange={(e) => setSortBy(e.target.value)}
             style={{ padding: '0.5rem 0.8rem', borderRadius: '8px', border: '1px solid var(--border-light)' }}
           >
+            <option value="diagnostic">Sort by Diagnostic Score</option>
             <option value="xp">Sort by Total XP</option>
-            <option value="accuracy">Sort by Accuracy %</option>
             <option value="passed">Sort by Questions Passed</option>
             <option value="name">Sort by Student Name</option>
           </select>
@@ -2381,9 +2530,9 @@ function TeacherDashboard({ teacher, onSignOut }) {
                 <th style={{ padding: '0.8rem 1rem' }}>Student Name</th>
                 <th style={{ padding: '0.8rem 1rem' }}>Roll No. / Lib ID</th>
                 <th style={{ padding: '0.8rem 1rem' }}>Branch</th>
-                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Total XP</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Diagnostic Score</th>
+                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Quest XP</th>
                 <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Passed</th>
-                <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Avg Score</th>
                 <th style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>Action</th>
               </tr>
             </thead>
@@ -2395,91 +2544,149 @@ function TeacherDashboard({ teacher, onSignOut }) {
                   </td>
                 </tr>
               ) : (
-                filtered.map((st, i) => (
-                  <tr key={st.libraryId || i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '0.8rem 1rem', color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td style={{ padding: '0.8rem 1rem', fontWeight: 700 }}>
-                      <div>{st.avatar} {st.name}</div>
-                      <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{st.email}</small>
-                    </td>
-                    <td style={{ padding: '0.8rem 1rem', fontFamily: 'monospace', color: 'var(--royal-violet)', fontWeight: 700 }}>
-                      {st.libraryId}
-                    </td>
-                    <td style={{ padding: '0.8rem 1rem' }}>
-                      <span className="badge-chip" style={{ background: 'var(--bg-lavender)', color: 'var(--royal-violet-deep)', fontSize: '0.75rem' }}>
-                        {st.branch}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center', color: 'var(--gold-dark)', fontWeight: 800 }}>
-                      {st.xp}
-                    </td>
-                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
-                      {st.completedCount}/100
-                    </td>
-                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center', fontWeight: 800, color: st.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
-                      {st.avgScore}%
-                    </td>
-                    <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
-                      <button 
-                        type="button" 
-                        className="btn-3d btn-3d-white btn-sm"
-                        onClick={() => setSelectedStudent(st)}
-                        style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
-                      >
-                        🔍 View
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filtered.map((st, i) => {
+                  const effectiveDiagScore = st.diagnosticScore || st.avgScore || 0;
+                  return (
+                    <tr key={st.libraryId || i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '0.8rem 1rem', color: 'var(--text-muted)' }}>{i + 1}</td>
+                      <td style={{ padding: '0.8rem 1rem', fontWeight: 700 }}>
+                        <div>{st.avatar} {st.name}</div>
+                        <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{st.email}</small>
+                      </td>
+                      <td style={{ padding: '0.8rem 1rem', fontFamily: 'monospace', color: 'var(--royal-violet)', fontWeight: 700 }}>
+                        {st.libraryId}
+                      </td>
+                      <td style={{ padding: '0.8rem 1rem' }}>
+                        <span className="badge-chip" style={{ background: 'var(--bg-lavender)', color: 'var(--royal-violet-deep)', fontSize: '0.75rem' }}>
+                          {st.branch}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
+                        {effectiveDiagScore > 0 ? (
+                          <span className="badge-chip" style={{ 
+                            background: effectiveDiagScore >= 70 ? 'var(--bg-mint)' : 'var(--bg-rose)', 
+                            color: effectiveDiagScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)', 
+                            fontWeight: 900,
+                            padding: '0.3rem 0.6rem',
+                            fontSize: '0.85rem'
+                          }}>
+                            🎯 {effectiveDiagScore}%
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Pending</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.8rem 1rem', textAlign: 'center', color: 'var(--gold-dark)', fontWeight: 800 }}>
+                        {st.xp}
+                      </td>
+                      <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
+                        {st.completedCount}/100
+                      </td>
+                      <td style={{ padding: '0.8rem 1rem', textAlign: 'center' }}>
+                        <button 
+                          type="button" 
+                          className="btn-3d btn-3d-white btn-sm"
+                          onClick={() => setSelectedStudent(st)}
+                          style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', fontWeight: 800, color: 'var(--royal-violet)' }}
+                        >
+                          🔍 View Report
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Student Drilldown Modal */}
+      {/* Student Drilldown Modal (Overlay fixed with proper z-index) */}
       {selectedStudent && (
-        <div className="modal-backdrop" onClick={() => setSelectedStudent(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+        <div className="modal-overlay" onClick={() => setSelectedStudent(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '680px', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
               <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--royal-violet)' }}>
+                <h3 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--royal-violet)' }}>
                   {selectedStudent.avatar} {selectedStudent.name}
                 </h3>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Roll No: {selectedStudent.libraryId} • Branch: {selectedStudent.branch}
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                  Roll No: <strong>{selectedStudent.libraryId}</strong> • Branch: <strong>{selectedStudent.branch}</strong>
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                   Email: {selectedStudent.email}
                 </div>
               </div>
               <button 
                 type="button" 
                 onClick={() => setSelectedStudent(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+                style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: 'var(--text-muted)' }}
               >
                 ✕
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem', marginBottom: '1rem' }}>
-              <div style={{ padding: '0.8rem', background: 'var(--bg-lavender)', borderRadius: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Total XP</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--royal-violet)' }}>{selectedStudent.xp}</div>
-              </div>
-              <div style={{ padding: '0.8rem', background: selectedStudent.avgScore >= 70 ? 'var(--bg-mint)' : 'var(--bg-rose)', borderRadius: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Avg Pronunciation</div>
-                <div style={{ fontSize: '1.4rem', fontWeight: 900, color: selectedStudent.avgScore >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
-                  {selectedStudent.avgScore}%
+            {/* Metric Summary Chips */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.8rem', marginBottom: '1.25rem' }}>
+              <div style={{ padding: '0.8rem', background: (selectedStudent.diagnosticScore || selectedStudent.avgScore) >= 70 ? 'var(--bg-mint)' : 'var(--bg-rose)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Diagnostic Score</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: (selectedStudent.diagnosticScore || selectedStudent.avgScore) >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>
+                  {(selectedStudent.diagnosticScore || selectedStudent.avgScore || 0)}%
                 </div>
+              </div>
+
+              <div style={{ padding: '0.8rem', background: 'var(--bg-lavender)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Total Quest XP</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--royal-violet)' }}>{selectedStudent.xp}</div>
+              </div>
+
+              <div style={{ padding: '0.8rem', background: 'var(--bg-surface-subtle)', borderRadius: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 700 }}>Questions Passed</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--gold-dark)' }}>{selectedStudent.completedCount}/100</div>
               </div>
             </div>
 
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>
-                Weakest Sounds Needing Attention:
+            {/* Diagnostic Breakdown */}
+            {selectedStudent.diagnosticReport && selectedStudent.diagnosticReport.all_question_results ? (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <h4 style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                  🎯 15-Question Diagnostic Assessment Breakdown
+                </h4>
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border-light)', borderRadius: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-surface-subtle)', borderBottom: '1px solid var(--border-light)' }}>
+                        <th style={{ padding: '0.4rem 0.5rem' }}>#</th>
+                        <th style={{ padding: '0.4rem 0.5rem' }}>Word</th>
+                        <th style={{ padding: '0.4rem 0.5rem' }}>Sound</th>
+                        <th style={{ padding: '0.4rem 0.5rem' }}>Heard</th>
+                        <th style={{ padding: '0.4rem 0.5rem' }}>Score</th>
+                        <th style={{ padding: '0.4rem 0.5rem' }}>Feedback</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedStudent.diagnosticReport.all_question_results.map((q, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)', background: q.score >= 70 ? 'rgba(16,185,129,0.03)' : 'rgba(244,63,94,0.03)' }}>
+                          <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                          <td style={{ padding: '0.4rem 0.5rem', fontWeight: 800 }}>{q.word}</td>
+                          <td style={{ padding: '0.4rem 0.5rem', color: 'var(--royal-violet)' }}>{formatPhonemeShort(q.sound)}</td>
+                          <td style={{ padding: '0.4rem 0.5rem', fontFamily: 'monospace' }}>{q.spoken_word || '—'}</td>
+                          <td style={{ padding: '0.4rem 0.5rem', fontWeight: 800, color: q.score >= 70 ? 'var(--emerald-dark)' : 'var(--coral)' }}>{q.score}%</td>
+                          <td style={{ padding: '0.4rem 0.5rem', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{q.diagnosis_note || q.improvement_tip || 'Clear sound ✓'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div style={{ padding: '0.6rem 0.8rem', background: 'var(--bg-surface-subtle)', borderRadius: '10px', fontSize: '0.85rem' }}>
+            ) : null}
+
+            {/* Weakest Sounds */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
+                ⚠️ Weakest Sounds Requiring Coaching:
+              </div>
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-surface-subtle)', borderRadius: '10px', fontSize: '0.85rem' }}>
                 {selectedStudent.weakestSounds || 'All evaluated sounds meet target threshold! ✓'}
               </div>
             </div>
@@ -2488,9 +2695,9 @@ function TeacherDashboard({ teacher, onSignOut }) {
               type="button" 
               className="btn-3d btn-3d-primary"
               onClick={() => setSelectedStudent(null)}
-              style={{ width: '100%', padding: '0.7rem' }}
+              style={{ width: '100%', padding: '0.75rem' }}
             >
-              Close
+              Done / Close
             </button>
           </div>
         </div>
