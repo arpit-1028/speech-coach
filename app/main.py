@@ -102,6 +102,7 @@ async def check(
 
         # Also capture what Whisper actually heard (for word-match bonus check)
         from app.services.recognizer import _transcribe_words
+        import re as _re
         try:
             whisper_words = _transcribe_words(file_path, hint_word=word)
             whisper_heard = " ".join(whisper_words)
@@ -134,12 +135,25 @@ async def check(
             best_expected_ipa = []
 
         # Step 6 – Word-match bonus
-        # If Whisper correctly transcribed the expected word, the user clearly
-        # said the right word. Give a score floor of 72 to avoid false negatives
-        # caused by minor accent differences in the phoneme comparison.
-        word_correct = (whisper_heard.strip().lower() == word.strip().lower())
+        # If Whisper correctly transcribed the expected word/phrase, the user
+        # clearly said the right thing. Give a score floor of 72 to avoid false
+        # negatives caused by minor accent differences in phoneme comparison.
+        def _normalize_for_match(s):
+            """Strip punctuation, lowercase, sort words for order-insensitive match."""
+            return set(_re.findall(r"[a-z']+", s.lower()))
+
+        expected_words_set = _normalize_for_match(word)
+        heard_words_set = _normalize_for_match(whisper_heard)
+
+        # For single words: exact match. For phrases: ≥80% word overlap.
+        if expected_words_set and heard_words_set:
+            overlap = len(expected_words_set & heard_words_set) / len(expected_words_set)
+            word_correct = overlap >= 0.8
+        else:
+            word_correct = False
+
         if word_correct and best_sc < 72:
-            print(f"WORD-MATCH BONUS: Whisper heard '{whisper_heard}' == expected '{word}', boosting {best_sc}→72")
+            print(f"WORD-MATCH BONUS: Whisper heard '{whisper_heard}' ~= expected '{word}' (overlap={overlap:.0%}), boosting {best_sc}→72")
             best_sc = 72
 
         # Step 6b: If audio is silence or too quiet, user didn't actually speak

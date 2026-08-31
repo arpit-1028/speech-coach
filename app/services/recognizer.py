@@ -48,7 +48,7 @@ def preprocess_audio(input_file):
 
 
 # ── Whisper transcription ──────────────────────────────────────────────────────
-def _transcribe_words(audio_path: str, hint_word: str = "") -> list[str]:
+def _transcribe_words(audio_path: str, hint_word: str = "") -> list:
     """
     Transcribe audio and return a list of cleaned lower-case words.
     Language is forced to English so Indian-accented speech is always treated as
@@ -84,31 +84,43 @@ def _transcribe_words(audio_path: str, hint_word: str = "") -> list[str]:
     print("WHISPER WORDS:", words)
 
     # ── Length guard ────────────────────────────────────────────────────────
-    # Single-word pronunciation exercises should produce 1-3 words at most.
-    # If Whisper returns a long sentence (hallucination), reduce to the
-    # most relevant words only.
-    if hint_word and len(words) > 4:
+    # For single-word pronunciation exercises, Whisper sometimes hallucinates
+    # long sentences. We guard against this only when the EXPECTED target is
+    # a single word (1 word). For multi-word phrases/sentences, we trust
+    # Whisper and do NOT truncate.
+    hint_clean = re.sub(r'[^a-z\s]', '', hint_word.lower().strip()) if hint_word else ""
+    hint_word_count = len(hint_clean.split()) if hint_clean else 0
+
+    if hint_word_count <= 1 and len(words) > 4:
+        # Single-word target but Whisper returned many words → hallucination
         print(f"WHISPER LENGTH GUARD: {len(words)} words → filtering to best match for '{hint_word}'")
         hint_chars = set(hint_word.lower())
         filtered = [w for w in words if set(w) & hint_chars]
         words = filtered[:3] if filtered else words[:2]
         print("WHISPER FILTERED WORDS:", words)
+    elif hint_word_count > 1 and len(words) > hint_word_count * 3:
+        # Multi-word target but Whisper returned way too many words → hallucination
+        print(f"WHISPER MULTI-WORD LENGTH GUARD: {len(words)} words (expected ~{hint_word_count}) → trimming")
+        words = words[:hint_word_count + 3]
+        print("WHISPER TRIMMED WORDS:", words)
 
     return words
 
 
 # ── Main public function ───────────────────────────────────────────────────────
-def recognize_audio(filename: str, expected_word: str = "") -> list[str]:
+def recognize_audio(filename: str, expected_word: str = "") -> list:
     """
     Convert speech in `filename` to a list of IPA phoneme tokens.
 
     Pipeline:
       Whisper transcript → word list → CMU dict → IPA tokens
 
+    For single-word targets: picks the best matching word from Whisper output.
+    For multi-word phrases: converts ALL transcribed words to IPA phonemes.
+
     Args:
         filename:      Path to the audio file (WAV, 16 kHz recommended).
-        expected_word: The word the user was supposed to say. Used as a
-                       tiebreaker when Whisper returns multiple candidates.
+        expected_word: The word/phrase the user was supposed to say.
 
     Returns:
         List of IPA token strings, e.g. ['θ', 'ɪ', 'ŋ', 'k'] for "think".
@@ -126,32 +138,47 @@ def recognize_audio(filename: str, expected_word: str = "") -> list[str]:
         return []
 
     # Step 2 – Convert words → IPA via CMU dict
-    # We import here to avoid circular imports (cmu_service imports nothing from recognizer)
     from app.services.cmu_service import get_phonemes_variants, cmu_to_ipa
 
-    # Try each transcribed word; pick the one that is closest to expected_word
-    # (handles cases like Whisper hearing "thin" instead of "think")
+    # Determine if expected target is single-word or multi-word
     exp_lower = expected_word.lower().strip()
-    best_word = _pick_best_word(words, exp_lower)
-    print("BEST WHISPER WORD:", best_word)
+    exp_clean = re.sub(r'[^a-z\s]', '', exp_lower)
+    exp_word_count = len(exp_clean.split()) if exp_clean else 0
 
-    # Get CMU variants for that word and pick variant 0 (most common pronunciation)
-    variants = get_phonemes_variants(best_word)
-    if not variants or not variants[0]:
-        # Fallback: try whole transcript joined
-        variants = get_phonemes_variants(" ".join(words))
+    if exp_word_count <= 1:
+        # ── SINGLE-WORD mode (original behavior, unchanged) ──────────────
+        best_word = _pick_best_word(words, exp_lower)
+        print("BEST WHISPER WORD:", best_word)
 
-    if not variants or not variants[0]:
-        print("RECOGNIZER: CMU lookup failed, returning []")
-        return []
+        variants = get_phonemes_variants(best_word)
+        if not variants or not variants[0]:
+            variants = get_phonemes_variants(" ".join(words))
 
-    ipa_tokens = cmu_to_ipa(variants[0])
-    print("SPOKEN IPA (from CMU):", ipa_tokens)
-    return ipa_tokens
+        if not variants or not variants[0]:
+            print("RECOGNIZER: CMU lookup failed, returning []")
+            return []
+
+        ipa_tokens = cmu_to_ipa(variants[0])
+        print("SPOKEN IPA (from CMU):", ipa_tokens)
+        return ipa_tokens
+    else:
+        # ── MULTI-WORD mode (new: convert ALL words to IPA) ──────────────
+        print(f"RECOGNIZER: Multi-word mode ({len(words)} spoken words for {exp_word_count}-word target)")
+        all_ipa = []
+        for w in words:
+            variants = get_phonemes_variants(w)
+            if variants and variants[0]:
+                word_ipa = cmu_to_ipa(variants[0])
+                all_ipa.extend(word_ipa)
+            else:
+                print(f"RECOGNIZER: CMU lookup failed for word '{w}', skipping")
+
+        print("SPOKEN IPA (multi-word from CMU):", all_ipa)
+        return all_ipa
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-def _pick_best_word(words: list[str], expected: str) -> str:
+def _pick_best_word(words: list, expected: str) -> str:
     """
     From the Whisper-transcribed word list, pick the word that is most similar
     to the expected word. Always returns what Whisper actually heard — never
