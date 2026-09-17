@@ -643,6 +643,87 @@ export default function App() {
                 </div>
               </div>
 
+              {/* ── DIAGNOSTIC TEST BANNER (Top Priority) ──────────────── */}
+              <div 
+                style={{
+                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%)',
+                  borderRadius: '1.1rem',
+                  padding: '1.3rem 1.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  boxShadow: '0 4px 20px rgba(99, 102, 241, 0.35)',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}
+                onClick={() => setShowDiagnosticModal(true)}
+              >
+                {/* Decorative circles */}
+                <div style={{ position: 'absolute', top: '-20px', right: '-20px', width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
+                <div style={{ position: 'absolute', bottom: '-30px', left: '40%', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', zIndex: 1 }}>
+                  <div style={{
+                    width: '52px', height: '52px', borderRadius: '14px',
+                    background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.6rem', flexShrink: 0
+                  }}>
+                    🎯
+                  </div>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.3 }}>
+                      {(progress.diagnosticScore || progress.completed?.diagnostic?.score) 
+                        ? '📊 Your Diagnostic Report' 
+                        : 'Take Diagnostic Test'}
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.82rem', marginTop: '0.15rem', fontWeight: 500 }}>
+                      {(progress.diagnosticScore || progress.completed?.diagnostic?.score) 
+                        ? `Score: ${progress.diagnosticScore || progress.completed?.diagnostic?.score}% — Tap to view report or retake`
+                        : 'Test your pronunciation level • 15 words • 3 min'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ zIndex: 1, flexShrink: 0 }}>
+                  {(progress.diagnosticScore || progress.completed?.diagnostic?.score) ? (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <div style={{
+                        background: 'rgba(255,255,255,0.2)', borderRadius: '12px',
+                        padding: '0.45rem 0.9rem', color: '#fff', fontWeight: 800,
+                        fontSize: '1.1rem', backdropFilter: 'blur(6px)',
+                      }}>
+                        {progress.diagnosticScore || progress.completed?.diagnostic?.score}%
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setShowDiagnosticModal(true); }}
+                        style={{
+                          background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '10px',
+                          padding: '0.45rem 0.6rem', color: '#fff', cursor: 'pointer', fontSize: '1rem'
+                        }}
+                        title="Retake Test"
+                      >
+                        🔁
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      style={{
+                        background: '#fff', color: '#6366f1', border: 'none', borderRadius: '12px',
+                        padding: '0.55rem 1.2rem', fontWeight: 800, fontSize: '0.9rem',
+                        cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                      }}
+                    >
+                      Start Test ➔
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* CONTINUE YOUR JOURNEY */}
               <div>
                 <div className="section-title-row">
@@ -740,51 +821,6 @@ export default function App() {
                       </div>
                     </div>
                     <div className="plan-item-progress">{grammarResult ? '1/1 ✓' : '0/1'}</div>
-                  </div>
-
-                  <div className="plan-item">
-                    <div className="plan-item-left">
-                      <div className="plan-item-icon">🎯</div>
-                      <div>
-                        <div className="plan-item-title">15-Question Diagnostic Test</div>
-                        <div className="plan-item-reward">
-                          {(progress.diagnosticScore || progress.completed?.diagnostic?.score) ? (
-                            <span style={{ color: (progress.diagnosticScore || progress.completed?.diagnostic?.score) >= 70 ? 'var(--emerald-dark)' : 'var(--coral-dark)', fontWeight: 800 }}>
-                              Score: {progress.diagnosticScore || progress.completed?.diagnostic?.score}% (Completed ✓)
-                            </span>
-                          ) : (
-                            '+100 XP Reward'
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {(progress.diagnosticScore || progress.completed?.diagnostic?.score) ? (
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button 
-                          className="btn-3d btn-3d-success btn-sm"
-                          type="button"
-                          onClick={() => setShowDiagnosticModal(true)}
-                        >
-                          📊 View Report
-                        </button>
-                        <button 
-                          className="btn-3d btn-3d-white btn-sm"
-                          type="button"
-                          onClick={() => setShowDiagnosticModal(true)}
-                          title="Retake Diagnostic Test"
-                        >
-                          🔁
-                        </button>
-                      </div>
-                    ) : (
-                      <button 
-                        className="btn-3d btn-3d-primary btn-sm"
-                        type="button"
-                        onClick={() => setShowDiagnosticModal(true)}
-                      >
-                        Take Test
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
