@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speech Diagnostic Platform - Live Microphone Tester</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    .badge {
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: #1e3a8a;
+      color: #93c5fd;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-secondary {
+      background: #334155;
+      color: var(--text);
+    }
+    .btn-secondary:hover { background: #475569; }
+    select, input {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 0.95rem;
+      width: 100%;
+      outline: none;
+    }
+    select:focus, input:focus {
+      border-color: var(--primary);
+    }
+    .field-group {
+      margin-bottom: 16px;
+    }
+    .field-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .target-box {
+      background: #0f172a;
+      border: 2px dashed #3b82f6;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      margin: 16px 0;
+    }
+    .target-word {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #93c5fd;
+      text-transform: uppercase;
+    }
+    .target-phonemes {
+      font-size: 1.1rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+      letter-spacing: 2px;
+      font-weight: 600;
+    }
+    .record-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      margin: 20px 0;
+    }
+    .record-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 2rem;
+      box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+      transition: transform 0.2s;
+    }
+    .record-btn.recording {
+      animation: pulse 1.5s infinite;
+      background: #dc2626;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 18px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .status-text {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .alignment-view {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+      justify-content: center;
+    }
+    .phone-pair {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #0f172a;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      min-width: 55px;
+    }
+    .phone-pair.match {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.1);
+    }
+    .phone-pair.sub {
+      border-color: var(--danger);
+      background: rgba(239, 68, 68, 0.15);
+    }
+    .phone-pair .exp {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #93c5fd;
+    }
+    .phone-pair .arrow {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 2px 0;
+    }
+    .phone-pair .det {
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+    .phone-pair.match .det { color: var(--success); }
+    .phone-pair.sub .det { color: var(--danger); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .progress-bar-bg {
+      background: #334155;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      width: 100px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+    }
+    .progress-bar-fill.weak { background: var(--danger); }
+    .progress-bar-fill.strong { background: var(--success); }
+    .report-box {
+      background: #0f172a;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      max-height: 380px;
+      overflow-y: auto;
+      border: 1px solid var(--card-border);
+      color: #cbd5e1;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      padding: 6px 14px;
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .stage-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #0f172a;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      border: 1px solid var(--card-border);
+      font-size: 0.9rem;
+    }
+    .stage-badge {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .stage-badge.unlocked {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+    }
+    .stage-badge.locked {
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>🎙️ Pronunciation Diagnostic Tester</h1>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Phoneme-level acoustic diagnostics with CMUdict & Allosaurus</p>
+      </div>
+      <div id="sessionBadge" class="badge">Session: Not Started</div>
+    </header>
+
+    <!-- LEFT COLUMN: Diagnostic Test & Microphone -->
+    <div class="card">
+      <div class="card-title">
+        <span>Active Diagnostic Test</span>
+        <button id="startBtn" class="btn-primary" onclick="initSession()">Start New Session</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div class="field-group">
+          <label>Target Sound</label>
+          <select id="soundSelect" onchange="onSoundChange()">
+            <option value="TH">TH (think, teeth)</option>
+            <option value="SH">SH (ship, wish)</option>
+            <option value="V">V (vine, love)</option>
+            <option value="W">W (water, away)</option>
+            <option value="R">R (red, door)</option>
+            <option value="L">L (light, ball)</option>
+            <option value="S">S (sun, dance)</option>
+            <option value="CH">CH (chair, beach)</option>
+          </select>
+        </div>
+
+        <div class="field-group">
+          <label>Target Word</label>
+          <select id="wordSelect" onchange="onWordChange()"></select>
+        </div>
+      </div>
+
+      <div class="target-box">
+        <div id="displayWord" class="target-word">THINK</div>
+        <div id="displayPhonemes" class="target-phonemes">Expected: TH · IH · NG · K</div>
+      </div>
+
+      <!-- Microphone Controls -->
+      <div class="record-controls">
+        <button id="recordBtn" class="record-btn" onclick="toggleRecording()">🎙️</button>
+        <div id="recordStatus" class="status-text">Click the microphone to speak</div>
+        <audio id="audioPlayback" controls style="display:none; width: 100%; max-width: 320px;"></audio>
+      </div>
+
+      <!-- Quick Simulation Fallback (for testing without mic) -->
+      <div style="border-top: 1px solid var(--card-border); padding-top: 14px; margin-top: 10px;">
+        <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 6px;">
+          Or test simulation (without microphone):
+        </label>
+        <div style="display: flex; gap: 8px;">
+          <input id="simPhonesInput" placeholder="e.g. T IH NG K" value="T IH NG K" />
+          <button class="btn-secondary" onclick="submitSimulation()">Simulate</button>
+        </div>
+      </div>
+
+      <!-- Result Alignment Display -->
+      <div id="alignmentSection" style="display:none; margin-top: 16px;">
+        <h4 style="font-size: 0.95rem; margin-bottom: 8px;">Acoustic Phoneme Alignment:</h4>
+        <div id="alignmentView" class="alignment-view"></div>
+        <div id="errorSummary" style="font-size: 0.9rem; text-align: center;"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: Sound Mastery, Confusion Matrix & Learning Path -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      <!-- Sound Mastery & Confusion Matrix Card -->
+      <div class="card">
+        <div class="card-title">
+          <span>Live Sound Mastery Profile</span>
+          <button class="btn-secondary" style="font-size:0.8rem; padding: 4px 10px;" onclick="refreshProfile()">Refresh</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Sound</th>
+              <th>Correct / Total</th>
+              <th>Mastery %</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="masteryTableBody">
+            <tr><td colspan="4" style="color:var(--text-muted); text-align:center;">No attempts recorded yet.</td></tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: 16px;">
+          <h4 style="font-size: 0.9rem; margin-bottom: 8px; color: var(--text-muted);">Cumulative Confusion Matrix (Substitutions):</h4>
+          <div id="confusionPills" style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">None yet.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Diagnostic Report & Learning Path Drawer -->
+      <div class="card">
+        <div class="tabs">
+          <button id="tabReportBtn" class="tab-btn active" onclick="switchTab('report')">Diagnostic Report</button>
+          <button id="tabPathBtn" class="tab-btn" onclick="switchTab('path')">Dynamic Learning Path</button>
+        </div>
+
+        <div id="reportTab">
+          <div id="reportContent" class="report-box">Start a session and record attempts across target words to generate an evidence-based diagnostic report.</div>
+        </div>
+
+        <div id="pathTab" style="display:none;">
+          <div id="pathList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentSessionId = null;
+    let currentUserId = null;
+    let wordSets = {};
+    let isRecording = false;
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    // Initialize on load
+    window.addEventListener("DOMContentLoaded", async () => {
+      await fetchWordSets();
+      await initSession();
+    });
+
+    async function fetchWordSets() {
+      try {
+        const res = await fetch("/diagnostic/words");
+        const data = await res.json();
+        wordSets = data.word_sets;
+        populateWords("TH");
+      } catch (err) {
+        console.error("Failed to load words", err);
+      }
+    }
+
+    function populateWords(sound) {
+      const select = document.getElementById("wordSelect");
+      select.innerHTML = "";
+      let words = [];
+
+      if (sound === "TH") {
+        words = [...wordSets.TH.initial, ...wordSets.TH.middle, ...wordSets.TH.final];
+      } else if (wordSets[sound]) {
+        words = wordSets[sound];
+      }
+
+      words.forEach(w => {
+        const opt = document.createElement("option");
+        opt.value = w;
+        opt.textContent = w;
+        select.appendChild(opt);
+      });
+
+      onWordChange();
+    }
+
+    function onSoundChange() {
+      const sound = document.getElementById("soundSelect").value;
+      populateWords(sound);
+    }
+
+    function onWordChange() {
+      const word = document.getElementById("wordSelect").value;
+      document.getElementById("displayWord").textContent = word.toUpperCase();
+      document.getElementById("displayPhonemes").textContent = "Loading canonical phonemes...";
+
+      // Set simulation default for quick testing
+      const simInput = document.getElementById("simPhonesInput");
+      if (word === "think") simInput.value = "T IH NG K";
+      else if (word === "vine") simInput.value = "W AY N";
+      else if (word === "ship") simInput.value = "S IH P";
+      else simInput.value = "";
+
+      // Quick fetch preview of phonemes
+      fetch(`/diagnostic/submit`, {
+        method: "POST",
+        body: new URLSearchParams({ session_id: currentSessionId || 1, word: word, detected_phonemes: "[]" })
+      }).then(r => r.json()).then(data => {
+        if (data.expected_phonemes) {
+          document.getElementById("displayPhonemes").textContent =
+            "Expected: " + data.expected_phonemes.join(" · ");
+        }
+      }).catch(() => {});
+    }
+
+    async function initSession() {
+      try {
+        const res = await fetch("/diagnostic/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Student Tester" })
+        });
+        const data = await res.json();
+        currentSessionId = data.session_id;
+        currentUserId = data.user_id;
+
+        document.getElementById("sessionBadge").textContent = `Session #${currentSessionId} (User #${currentUserId})`;
+        document.getElementById("sessionBadge").style.background = "#065f46";
+        document.getElementById("sessionBadge").style.color = "#6ee7b7";
+
+        await refreshProfile();
+        await refreshReport();
+        await refreshLearningPath();
+      } catch (err) {
+        console.error("Init session failed", err);
+      }
+    }
+
+    // Microphone Recording Logic (WAV/WebM)
+    async function toggleRecording() {
+      const btn = document.getElementById("recordBtn");
+      const status = document.getElementById("recordStatus");
+
+      if (!isRecording) {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioChunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const player = document.getElementById("audioPlayback");
+            player.src = audioUrl;
+            player.style.display = "block";
+
+            // Automatically submit to diagnostic backend
+            await submitAudioAttempt(audioBlob);
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          btn.classList.add("recording");
+          btn.textContent = "⏹️";
+          status.textContent = "Recording... Speak clearly into your mic, then click stop.";
+          status.style.color = "#ef4444";
+        } catch (err) {
+          alert("Microphone access denied or not available: " + err.message);
+        }
+      } else {
+        // Stop recording
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        isRecording = false;
+        btn.classList.remove("recording");
+        btn.textContent = "🎙️";
+        status.textContent = "Processing audio with speech recognizer...";
+        status.style.color = "#3b82f6";
+      }
+    }
+
+    async function submitAudioAttempt(blob) {
+      const word = document.getElementById("wordSelect").value;
+      const formData = new FormData();
+      formData.append("session_id", currentSessionId);
+      formData.append("word", word);
+      formData.append("audio", blob, "recording.webm");
+
+      try {
+        const res = await fetch("/diagnostic/submit", {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        renderAttemptResult(data);
+        await refreshProfile();
+        await refreshReport();
+        await refreshLearningPath();
+      } catch (err) {
+        document.getElementById("recordStatus").textContent = "Submission failed: " + err.message;
+      }
+    }
+
+    async function submitSimulation() {
+      const word = document.getElementById("wordSelect").value;
+      const phonemesStr = document.getElementById("simPhonesInput").value;
+      const formData = new FormData();
+      formData.append("session_id", currentSessionId);
+      formData.append("word", word);
+      formData.append("detected_phonemes", phonemesStr);
+
+      try {
+        const res = await fetch("/diagnostic/submit", {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        renderAttemptResult(data);
+        await refreshProfile();
+        await refreshReport();
+        await refreshLearningPath();
+      } catch (err) {
+        alert("Simulation error: " + err.message);
+      }
+    }
+
+    function renderAttemptResult(attempt) {
+      document.getElementById("alignmentSection").style.display = "block";
+      const container = document.getElementById("alignmentView");
+      container.innerHTML = "";
+
+      const exp = attempt.expected_phonemes || [];
+      const det = attempt.detected_phonemes || [];
+      const maxLen = Math.max(exp.length, det.length);
+
+      for (let i = 0; i < maxLen; i++) {
+        const ePhone = exp[i] || "-";
+        const dPhone = det[i] || "-";
+        const isMatch = ePhone === dPhone;
+
+        const pair = document.createElement("div");
+        pair.className = "phone-pair " + (isMatch ? "match" : "sub");
+        pair.innerHTML = `
+          <div class="exp">${ePhone}</div>
+          <div class="arrow">↓</div>
+          <div class="det">${dPhone}</div>
+        `;
+        container.appendChild(pair);
+      }
+
+      const status = document.getElementById("recordStatus");
+      const summary = document.getElementById("errorSummary");
+      if (attempt.is_correct) {
+        status.textContent = "✅ Correct Pronunciation!";
+        status.style.color = "#10b981";
+        summary.innerHTML = "<span style='color: #10b981;'>All target phonemes articulated accurately.</span>";
+      } else {
+        status.textContent = "⚠️ Phoneme Substitution Detected";
+        status.style.color = "#ef4444";
+        const errs = attempt.phoneme_errors.map(e => `<b>${e.expected} → ${e.actual}</b>`).join(", ");
+        summary.innerHTML = `<span style='color: #ef4444;'>Substitution Errors: ${errs}</span>`;
+      }
+    }
+
+    async function refreshProfile() {
+      if (!currentUserId) return;
+      try {
+        const res = await fetch(`/sound-profile/${currentUserId}`);
+        const data = await res.json();
+
+        // Populate Mastery Table
+        const tbody = document.getElementById("masteryTableBody");
+        tbody.innerHTML = "";
+        const sounds = Object.keys(data.sound_scores);
+
+        if (sounds.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='4' style='color:var(--text-muted); text-align:center;'>No attempts recorded yet.</td></tr>";
+        } else {
+          sounds.forEach(snd => {
+            const sc = data.sound_scores[snd];
+            const tr = document.createElement("tr");
+            const isWeak = sc.mastery_percentage < 60;
+            const isStrong = sc.mastery_percentage >= 80;
+            const barClass = isStrong ? "strong" : (isWeak ? "weak" : "");
+
+            tr.innerHTML = `
+              <td><b>${snd}</b></td>
+              <td>${sc.correct} / ${sc.total}</td>
+              <td>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span>${sc.mastery_percentage}%</span>
+                  <div class="progress-bar-bg">
+                    <div class="progress-bar-fill ${barClass}" style="width: ${sc.mastery_percentage}%"></div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="stage-badge ${isWeak ? 'locked' : 'unlocked'}">
+                  ${isStrong ? 'Strong' : (isWeak ? 'Weak' : 'Developing')}
+                </span>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+
+        // Populate Confusion Matrix
+        const pills = document.getElementById("confusionPills");
+        pills.innerHTML = "";
+        const matrixEntries = Object.entries(data.confusion_matrix);
+        if (matrixEntries.length === 0) {
+          pills.innerHTML = "<span style='font-size: 0.85rem; color: var(--text-muted);'>No errors yet.</span>";
+        } else {
+          matrixEntries.forEach(([pair, count]) => {
+            const span = document.createElement("span");
+            span.style.cssText = "background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600;";
+            span.textContent = `${pair}: ${count}`;
+            pills.appendChild(span);
+          });
+        }
+      } catch (err) {
+        console.error("Refresh profile error", err);
+      }
+    }
+
+    async function refreshReport() {
+      if (!currentUserId) return;
+      try {
+        const res = await fetch(`/diagnostic/report/${currentUserId}`);
+        const data = await res.json();
+        document.getElementById("reportContent").textContent = data.formatted_text_report;
+      } catch (err) {
+        console.error("Refresh report error", err);
+      }
+    }
+
+    async function refreshLearningPath() {
+      if (!currentUserId) return;
+      try {
+        const res = await fetch(`/learning-path/${currentUserId}`);
+        const data = await res.json();
+        const list = document.getElementById("pathList");
+        list.innerHTML = "";
+
+        Object.entries(data.learning_paths).forEach(([sound, info]) => {
+          const div = document.createElement("div");
+          div.style.marginBottom = "14px";
+          div.innerHTML = `<h5 style="color: #93c5fd; margin-bottom: 6px;">${sound} Progression (Mastery: ${info.mastery_percentage}%)</h5>`;
+
+          info.stages.forEach(st => {
+            const item = document.createElement("div");
+            item.className = "stage-item";
+            item.innerHTML = `
+              <span>${st.stage}</span>
+              <span class="stage-badge ${st.is_unlocked ? 'unlocked' : 'locked'}">
+                ${st.is_unlocked ? 'Unlocked' : 'Locked'}
+              </span>
+            `;
+            div.appendChild(item);
+          });
+
+          list.appendChild(div);
+        });
+      } catch (err) {
+        console.error("Refresh learning path error", err);
+      }
+    }
+
+    function switchTab(tab) {
+      document.getElementById("tabReportBtn").classList.toggle("active", tab === "report");
+      document.getElementById("tabPathBtn").classList.toggle("active", tab === "path");
+      document.getElementById("reportTab").style.display = tab === "report" ? "block" : "none";
+      document.getElementById("pathTab").style.display = tab === "path" ? "block" : "none";
+    }
+  </script>
+</body>
+</html>

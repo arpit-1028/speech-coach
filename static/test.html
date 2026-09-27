@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎙️ Speech Coach — Audio Recording Test Page</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1c1c1c;
+      --border: #2a2a2a;
+      --primary: #6366f1;
+      --primary-hover: #818cf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #eab308;
+      --text: #fafafa;
+      --text2: #a1a1aa;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    /* Layout */
+    .app { max-width: 1100px; margin: 0 auto; }
+    .header {
+      text-align: center;
+      padding: 30px 0 20px;
+    }
+    .header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; }
+    .header h1 span { color: var(--primary); }
+    .header p { color: var(--text2); margin-top: 4px; font-size: 0.9rem; }
+
+    /* Connection bar */
+    .conn-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .conn-bar .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      display: inline-block; margin-right: 8px;
+    }
+    .conn-bar .status-dot.online { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .conn-bar .status-dot.offline { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+    .conn-label { font-size: 0.85rem; color: var(--text2); }
+    .session-info { font-size: 0.85rem; color: var(--primary); font-weight: 600; }
+
+    /* Grid */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .card-header h2 { font-size: 1rem; font-weight: 700; }
+    .full-width { grid-column: 1 / -1; }
+
+    /* Buttons */
+    button {
+      cursor: pointer; border: none; border-radius: 8px;
+      padding: 8px 16px; font-weight: 600; font-size: 0.85rem;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+    .btn-ghost:hover { border-color: var(--text2); color: var(--text); }
+    .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+
+    /* Form */
+    select, input[type="text"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 0.9rem;
+      width: 100%;
+      outline: none;
+      transition: border 0.15s;
+    }
+    select:focus, input[type="text"]:focus { border-color: var(--primary); }
+    label { font-size: 0.8rem; color: var(--text2); display: block; margin-bottom: 5px; font-weight: 500; }
+
+    /* Target word display */
+    .word-display {
+      background: var(--bg);
+      border: 2px dashed var(--primary);
+      border-radius: var(--radius);
+      padding: 28px 20px;
+      text-align: center;
+      margin: 16px 0;
+    }
+    .word-display .word {
+      font-size: 2.8rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: var(--primary-hover);
+      text-transform: uppercase;
+    }
+    .word-display .phonemes {
+      color: var(--text2);
+      font-size: 0.95rem;
+      margin-top: 6px;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+    }
+
+    /* Record button */
+    .recorder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .rec-btn {
+      width: 90px; height: 90px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      color: white;
+      border: 4px solid #ffffff10;
+      transition: transform 0.2s, box-shadow 0.2s;
+      padding: 0;
+    }
+    .rec-btn:hover { transform: scale(1.05); }
+    .rec-btn.recording {
+      animation: glow 1.4s ease-in-out infinite;
+      background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+      50% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+    }
+    .rec-status {
+      font-size: 0.9rem; color: var(--text2); font-weight: 500; text-align: center;
+    }
+
+    /* Waveform bar */
+    .waveform {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      height: 40px;
+      margin: 10px 0;
+    }
+    .waveform .bar {
+      width: 4px;
+      background: var(--primary);
+      border-radius: 2px;
+      transition: height 0.1s;
+      height: 6px;
+    }
+    .waveform.active .bar { animation: wave 0.5s ease-in-out infinite alternate; }
+    .waveform.active .bar:nth-child(2) { animation-delay: 0.1s; }
+    .waveform.active .bar:nth-child(3) { animation-delay: 0.2s; }
+    .waveform.active .bar:nth-child(4) { animation-delay: 0.3s; }
+    .waveform.active .bar:nth-child(5) { animation-delay: 0.15s; }
+    .waveform.active .bar:nth-child(6) { animation-delay: 0.25s; }
+    .waveform.active .bar:nth-child(7) { animation-delay: 0.05s; }
+    @keyframes wave {
+      from { height: 6px; }
+      to { height: 36px; }
+    }
+
+    /* Audio player */
+    audio { width: 100%; max-width: 360px; margin-top: 8px; border-radius: 8px; }
+
+    /* Alignment result */
+    .alignment {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin: 14px 0;
+    }
+    .phone-pair {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg);
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      min-width: 50px;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .phone-pair.match { border-color: var(--success); background: #22c55e10; }
+    .phone-pair.error { border-color: var(--danger); background: #ef444415; }
+    .phone-pair .exp { color: var(--primary-hover); }
+    .phone-pair .arrow { color: var(--text2); font-size: 0.7rem; margin: 2px 0; }
+    .phone-pair.match .det { color: var(--success); }
+    .phone-pair.error .det { color: var(--danger); }
+
+    /* Result banner */
+    .result-banner {
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin: 10px 0;
+    }
+    .result-banner.correct { background: #22c55e15; color: var(--success); border: 1px solid #22c55e30; }
+    .result-banner.incorrect { background: #ef444415; color: var(--danger); border: 1px solid #ef444430; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text2); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* Progress bar */
+    .progress-bg {
+      background: var(--border);
+      height: 7px; border-radius: 4px;
+      overflow: hidden; width: 80px;
+    }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .progress-fill.strong { background: var(--success); }
+    .progress-fill.mid { background: var(--warning); }
+    .progress-fill.weak { background: var(--danger); }
+
+    /* Confusion pills */
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: #ef444420;
+      color: #fca5a5;
+      margin: 3px;
+    }
+
+    /* Report */
+    .report-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+      color: #d4d4d8;
+      line-height: 1.6;
+    }
+
+    /* Learning path */
+    .stage-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 12px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 5px;
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .badge-sm {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .badge-sm.unlocked { background: #22c55e20; color: #4ade80; }
+    .badge-sm.locked { background: #27272a; color: #71717a; }
+
+    /* Log area */
+    .log-area {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--text2);
+      line-height: 1.7;
+    }
+    .log-area .log-entry { border-bottom: 1px solid #ffffff08; padding: 2px 0; }
+    .log-area .log-time { color: #6366f1; }
+    .log-area .log-ok { color: var(--success); }
+    .log-area .log-err { color: var(--danger); }
+    .log-area .log-info { color: var(--warning); }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 6px; margin-bottom: 14px; }
+    .tab-item {
+      padding: 6px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text2);
+      font-size: 0.82rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .tab-item.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    /* Simulation section */
+    .sim-section {
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      margin-top: 14px;
+    }
+    .sim-row { display: flex; gap: 8px; }
+    .sim-row input { flex: 1; }
+
+    /* Hidden */
+    .hidden { display: none !important; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>🎙️ <span>Speech Coach</span> — Recording Tester</h1>
+    <p>Record audio, test pronunciation diagnostics, view phoneme alignment & mastery in real-time</p>
+  </div>
+
+  <!-- Connection Bar -->
+  <div class="conn-bar">
+    <div>
+      <span id="statusDot" class="status-dot offline"></span>
+      <span class="conn-label" id="connLabel">Connecting to backend...</span>
+    </div>
+    <div class="session-info" id="sessionInfo">No Session</div>
+    <button class="btn-primary btn-sm" onclick="startNewSession()">🔄 New Session</button>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="grid">
+
+    <!-- ====== LEFT: Recording Card ====== -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🎯 Record & Test</h2>
+      </div>
+
+      <!-- Sound & Word Selection -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+        <div>
+          <label>Target Sound</label>
+          <select id="soundSelect" onchange="onSoundChange()"></select>
+        </div>
+        <div>
+          <label>Target Word</label>
+          <select id="wordSelect" onchange="onWordChange()"></select>
+        </div>
+      </div>
+
+      <!-- Word Display -->
+      <div class="word-display">
+        <div class="word" id="targetWord">—</div>
+        <div class="phonemes" id="targetPhonemes">Select a word to begin</div>
+      </div>
+
+      <!-- Waveform -->
+      <div class="waveform" id="waveform">
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      </div>
+
+      <!-- Record Button -->
+      <div class="recorder">
+        <button class="rec-btn" id="recBtn" onclick="toggleRecording()">🎙️</button>
+        <div class="rec-status" id="recStatus">Click the microphone to start recording</div>
+        <audio id="audioPlayer" controls class="hidden"></audio>
+      </div>
+
+      <!-- Result Area -->
+      <div id="resultArea" class="hidden">
+        <div id="resultBanner" class="result-banner"></div>
+        <div id="alignmentView" class="alignment"></div>
+        <div id="errorDetail" style="text-align: center; font-size: 0.85rem; color: var(--text2);"></div>
+      </div>
+
+      <!-- Simulation Fallback -->
+      <div class="sim-section">
+        <label>🧪 Or test via simulation (no mic needed):</label>
+        <div class="sim-row">
+          <input type="text" id="simInput" placeholder='e.g. T IH NG K   or   ["T","IH","NG","K"]' />
+          <button class="btn-ghost" onclick="submitSimulation()">Simulate</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== RIGHT: Mastery + Confusion ====== -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📊 Sound Mastery Profile</h2>
+        <button class="btn-ghost btn-sm" onclick="refreshProfile()">↻ Refresh</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Sound</th><th>Correct / Total</th><th>Mastery</th><th>Status</th></tr>
+        </thead>
+        <tbody id="masteryBody">
+          <tr><td colspan="4" style="color:var(--text2); text-align:center;">No data yet — start recording!</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top: 18px;">
+        <h3 style="font-size: 0.85rem; color: var(--text2); margin-bottom: 8px;">Confusion Matrix (Substitutions)</h3>
+        <div id="confusionArea" style="min-height: 24px;">
+          <span style="font-size: 0.82rem; color: var(--text2);">No errors recorded yet.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== BOTTOM LEFT: Report + Learning Path ====== -->
+    <div class="card">
+      <div class="tab-bar">
+        <button class="tab-item active" id="tabReport" onclick="switchTab('report')">📋 Diagnostic Report</button>
+        <button class="tab-item" id="tabPath" onclick="switchTab('path')">🛤️ Learning Path</button>
+      </div>
+
+      <div id="reportPane">
+        <div class="report-box" id="reportContent">Submit pronunciation attempts to generate an evidence-based diagnostic report.</div>
+      </div>
+
+      <div id="pathPane" class="hidden">
+        <div id="pathContent"></div>
+      </div>
+    </div>
+
+    <!-- ====== BOTTOM RIGHT: API Activity Log ====== -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📡 API Activity Log</h2>
+        <button class="btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="log-area" id="logArea">
+        <div class="log-entry"><span class="log-info">Waiting for session...</span></div>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+</div><!-- /app -->
+
+<script>
+  // ─── State ───
+  let sessionId = null;
+  let userId = null;
+  let wordSets = {};
+  let isRecording = false;
+  let mediaRecorder = null;
+  let audioChunks = [];
+
+  // ─── Helpers ───
+  function log(msg, type = 'info') {
+    const area = document.getElementById('logArea');
+    const ts = new Date().toLocaleTimeString();
+    const cls = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : 'log-info';
+    area.innerHTML += `<div class="log-entry"><span class="log-time">[${ts}]</span> <span class="${cls}">${msg}</span></div>`;
+    area.scrollTop = area.scrollHeight;
+  }
+  function clearLog() {
+    document.getElementById('logArea').innerHTML = '';
+    log('Log cleared');
+  }
+
+  // ─── Boot ───
+  window.addEventListener('DOMContentLoaded', async () => {
+    await checkHealth();
+    await fetchWordSets();
+    await startNewSession();
+  });
+
+  async function checkHealth() {
+    try {
+      const res = await fetch('/health');
+      const data = await res.json();
+      document.getElementById('statusDot').classList.replace('offline', 'online');
+      document.getElementById('connLabel').textContent = `Connected — Engine: ${data.engine}, DB: ${data.database}`;
+      log(`Backend healthy (engine=${data.engine}, db=${data.database})`, 'ok');
+    } catch (e) {
+      document.getElementById('connLabel').textContent = 'Backend offline — start server with: uvicorn app.main:app --reload';
+      log('Cannot reach backend!', 'err');
+    }
+  }
+
+  // ─── Word Sets ───
+  async function fetchWordSets() {
+    try {
+      const res = await fetch('/diagnostic/words');
+      const data = await res.json();
+      wordSets = data.word_sets;
+      log(`Loaded ${data.total_words} diagnostic words across ${data.target_sounds.length} sounds`, 'ok');
+
+      const sel = document.getElementById('soundSelect');
+      sel.innerHTML = '';
+      data.target_sounds.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        sel.appendChild(o);
+      });
+      onSoundChange();
+    } catch (e) {
+      log('Failed to fetch word sets: ' + e.message, 'err');
+    }
+  }
+
+  function onSoundChange() {
+    const sound = document.getElementById('soundSelect').value;
+    const sel = document.getElementById('wordSelect');
+    sel.innerHTML = '';
+    let words = [];
+
+    if (wordSets[sound]) {
+      if (typeof wordSets[sound] === 'object' && !Array.isArray(wordSets[sound])) {
+        // TH has {initial, middle, final}
+        words = [...(wordSets[sound].initial || []), ...(wordSets[sound].middle || []), ...(wordSets[sound].final || [])];
+      } else {
+        words = wordSets[sound];
+      }
+    }
+
+    words.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w; o.textContent = w;
+      sel.appendChild(o);
+    });
+    onWordChange();
+  }
+
+  function onWordChange() {
+    const word = document.getElementById('wordSelect').value;
+    if (!word) return;
+    document.getElementById('targetWord').textContent = word.toUpperCase();
+    document.getElementById('targetPhonemes').textContent = 'Loading phonemes...';
+    document.getElementById('resultArea').classList.add('hidden');
+  }
+
+  // ─── Session ───
+  async function startNewSession() {
+    try {
+      const res = await fetch('/diagnostic/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Test Student' })
+      });
+      const data = await res.json();
+      sessionId = data.session_id;
+      userId = data.user_id;
+      document.getElementById('sessionInfo').textContent = `Session #${sessionId} | User #${userId}`;
+      log(`Session #${sessionId} created for User #${userId}`, 'ok');
+      await refreshAll();
+    } catch (e) {
+      log('Failed to start session: ' + e.message, 'err');
+    }
+  }
+
+  // ─── Recording ───
+  async function toggleRecording() {
+    const btn = document.getElementById('recBtn');
+    const status = document.getElementById('recStatus');
+    const wave = document.getElementById('waveform');
+
+    if (!isRecording) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          const url = URL.createObjectURL(blob);
+          const player = document.getElementById('audioPlayer');
+          player.src = url;
+          player.classList.remove('hidden');
+
+          log(`Audio recorded (${(blob.size / 1024).toFixed(1)} KB, ${mediaRecorder.mimeType})`, 'ok');
+          status.textContent = '⏳ Submitting audio to backend for phoneme extraction...';
+
+          await submitAudio(blob);
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        btn.classList.add('recording');
+        btn.textContent = '⏹️';
+        wave.classList.add('active');
+        status.textContent = '🔴 Recording... Speak the target word, then click stop';
+        status.style.color = '#ef4444';
+        log('Recording started — speak clearly into your microphone', 'info');
+      } catch (e) {
+        log('Microphone error: ' + e.message, 'err');
+        alert('Could not access microphone: ' + e.message);
+      }
+    } else {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+      isRecording = false;
+      btn.classList.remove('recording');
+      btn.textContent = '🎙️';
+      wave.classList.remove('active');
+      status.style.color = '';
+      log('Recording stopped — processing audio...', 'info');
+    }
+  }
+
+  async function submitAudio(blob) {
+    const word = document.getElementById('wordSelect').value;
+    const fd = new FormData();
+    fd.append('session_id', sessionId);
+    fd.append('word', word);
+    fd.append('audio', blob, 'recording.webm');
+
+    log(`POST /diagnostic/submit — word="${word}", audio=${(blob.size/1024).toFixed(1)}KB`, 'info');
+
+    try {
+      const res = await fetch('/diagnostic/submit', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      log(`Response: ${data.is_correct ? '✅ CORRECT' : '❌ ERRORS DETECTED'} — expected=[${data.expected_phonemes}], detected=[${data.detected_phonemes}]`, data.is_correct ? 'ok' : 'err');
+      renderResult(data);
+      await refreshAll();
+    } catch (e) {
+      log('Submit failed: ' + e.message, 'err');
+      document.getElementById('recStatus').textContent = '❌ Submission failed: ' + e.message;
+    }
+  }
+
+  // ─── Simulation ───
+  async function submitSimulation() {
+    const word = document.getElementById('wordSelect').value;
+    let raw = document.getElementById('simInput').value.trim();
+    if (!raw) { alert('Enter simulated phonemes'); return; }
+
+    const fd = new FormData();
+    fd.append('session_id', sessionId);
+    fd.append('word', word);
+    fd.append('detected_phonemes', raw);
+
+    log(`POST /diagnostic/submit (SIM) — word="${word}", phonemes="${raw}"`, 'info');
+
+    try {
+      const res = await fetch('/diagnostic/submit', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || res.statusText);
+      }
+      const data = await res.json();
+      log(`Simulation result: ${data.is_correct ? '✅ CORRECT' : '❌ ERRORS'} — expected=[${data.expected_phonemes}], detected=[${data.detected_phonemes}]`, data.is_correct ? 'ok' : 'err');
+      renderResult(data);
+      await refreshAll();
+    } catch (e) {
+      log('Simulation error: ' + e.message, 'err');
+    }
+  }
+
+  // ─── Render Alignment ───
+  function renderResult(attempt) {
+    const area = document.getElementById('resultArea');
+    area.classList.remove('hidden');
+
+    const banner = document.getElementById('resultBanner');
+    if (attempt.is_correct) {
+      banner.className = 'result-banner correct';
+      banner.textContent = '✅ Perfect Pronunciation!';
+    } else {
+      banner.className = 'result-banner incorrect';
+      const errs = attempt.phoneme_errors.map(e => `${e.expected} → ${e.actual}`).join(', ');
+      banner.textContent = `⚠️ Substitutions: ${errs}`;
+    }
+
+    const view = document.getElementById('alignmentView');
+    view.innerHTML = '';
+    const exp = attempt.expected_phonemes || [];
+    const det = attempt.detected_phonemes || [];
+    const maxLen = Math.max(exp.length, det.length);
+    for (let i = 0; i < maxLen; i++) {
+      const e = exp[i] || '—';
+      const d = det[i] || '—';
+      const ok = e === d;
+      const div = document.createElement('div');
+      div.className = 'phone-pair ' + (ok ? 'match' : 'error');
+      div.innerHTML = `<div class="exp">${e}</div><div class="arrow">↓</div><div class="det">${d}</div>`;
+      view.appendChild(div);
+    }
+
+    // Update displayed phonemes
+    document.getElementById('targetPhonemes').textContent = 'Expected: ' + exp.join(' · ');
+    document.getElementById('recStatus').textContent = attempt.is_correct
+      ? '✅ All phonemes matched!'
+      : '⚠️ Phoneme substitution detected — see alignment above';
+  }
+
+  // ─── Refresh All Panels ───
+  async function refreshAll() {
+    await Promise.all([refreshProfile(), refreshReport(), refreshLearningPath()]);
+  }
+
+  async function refreshProfile() {
+    if (!userId) return;
+    try {
+      const res = await fetch(`/sound-profile/${userId}`);
+      const data = await res.json();
+
+      // Mastery table
+      const tbody = document.getElementById('masteryBody');
+      const sounds = Object.keys(data.sound_scores);
+      if (sounds.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text2); text-align:center;">No data yet.</td></tr>';
+      } else {
+        tbody.innerHTML = '';
+        sounds.forEach(s => {
+          const sc = data.sound_scores[s];
+          const pct = sc.mastery_percentage;
+          const cls = pct >= 80 ? 'strong' : pct >= 60 ? 'mid' : 'weak';
+          const label = pct >= 80 ? 'Strong' : pct >= 60 ? 'Developing' : 'Weak';
+          const labelCls = pct >= 80 ? 'unlocked' : 'locked';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${s}</strong></td>
+            <td>${sc.correct} / ${sc.total}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span>${pct}%</span>
+                <div class="progress-bg"><div class="progress-fill ${cls}" style="width:${pct}%"></div></div>
+              </div>
+            </td>
+            <td><span class="badge-sm ${labelCls}">${label}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // Confusion matrix
+      const conf = document.getElementById('confusionArea');
+      const entries = Object.entries(data.confusion_matrix);
+      if (entries.length === 0) {
+        conf.innerHTML = '<span style="font-size:0.82rem; color:var(--text2);">No errors yet.</span>';
+      } else {
+        conf.innerHTML = '';
+        entries.forEach(([pair, count]) => {
+          conf.innerHTML += `<span class="pill">${pair}: ${count}</span>`;
+        });
+      }
+    } catch (e) {
+      log('Profile refresh error: ' + e.message, 'err');
+    }
+  }
+
+  async function refreshReport() {
+    if (!userId) return;
+    try {
+      const res = await fetch(`/diagnostic/report/${userId}`);
+      const data = await res.json();
+      document.getElementById('reportContent').textContent = data.formatted_text_report || 'No report data yet.';
+    } catch (e) {
+      log('Report refresh error: ' + e.message, 'err');
+    }
+  }
+
+  async function refreshLearningPath() {
+    if (!userId) return;
+    try {
+      const res = await fetch(`/learning-path/${userId}`);
+      const data = await res.json();
+      const container = document.getElementById('pathContent');
+      container.innerHTML = '';
+
+      Object.entries(data.learning_paths).forEach(([sound, info]) => {
+        let html = `<div style="margin-bottom:14px;">
+          <div style="font-size:0.9rem; font-weight:700; color:var(--primary-hover); margin-bottom:6px;">
+            ${sound} <span style="color:var(--text2); font-weight:500;">— Mastery: ${info.mastery_percentage}%</span>
+          </div>`;
+        info.stages.forEach(st => {
+          const cls = st.is_unlocked ? 'unlocked' : 'locked';
+          html += `<div class="stage-row">
+            <span>${st.stage}</span>
+            <span class="badge-sm ${cls}">${st.is_unlocked ? '🔓 Unlocked' : '🔒 Locked'}</span>
+          </div>`;
+        });
+        html += '</div>';
+        container.innerHTML += html;
+      });
+    } catch (e) {
+      log('Learning path error: ' + e.message, 'err');
+    }
+  }
+
+  // ─── Tab Switching ───
+  function switchTab(tab) {
+    document.getElementById('tabReport').classList.toggle('active', tab === 'report');
+    document.getElementById('tabPath').classList.toggle('active', tab === 'path');
+    document.getElementById('reportPane').classList.toggle('hidden', tab !== 'report');
+    document.getElementById('pathPane').classList.toggle('hidden', tab !== 'path');
+  }
+</script>
+</body>
+</html>
