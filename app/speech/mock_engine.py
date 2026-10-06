@@ -8,6 +8,8 @@ class MockPhonemeRecognizer(PhonemeRecognizer):
     Supports preset phoneme responses or simulated substitutions.
     """
 
+    uses_quality_gate = False
+
     def __init__(self, default_response: Optional[List[str]] = None):
         self._default_response = default_response or ["T", "IH", "NG", "K"]
         self._word_presets: Dict[str, List[str]] = {}

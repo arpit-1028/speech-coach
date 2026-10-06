@@ -12,9 +12,8 @@ if str(BASE_DIR) not in sys.path:
 from app.config import settings
 from app.data.word_sets import DIAGNOSTIC_WORD_SETS, ALL_WORDS
 from app.alignment.cmudict_service import cmu_service
-from app.alignment.aligner import phoneme_aligner
 from app.alignment.mapping import ARPABET_TO_IPA, normalize_phoneme_sequence
-from app.speech.factory import get_phoneme_recognizer
+from app.speech.pipeline import analyze_attempt, AudioQualityError
 
 # In-memory session stats for live testing
 session_stats = {
@@ -59,29 +58,14 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
 
     clean_word = word.strip().lower()
 
-    # 1. Expected phonemes
+    # 1-3. Quality gate (VAD) -> GOP forced-alignment scoring of every expected phoneme
     try:
-        expected_arpabet = cmu_service.get_phonemes(clean_word)
-        expected_ipa = [ARPABET_TO_IPA.get(p, p) for p in expected_arpabet]
+        analysis = analyze_attempt(clean_word, audio_path=audio_path)
+    except AudioQualityError as e:
+        return f"### Please record again: {e.report.reason}", "", "", ""
     except Exception as e:
-        return f"Γ¥î Error retrieving phonemes for '{clean_word}': {e}", "", "", ""
-
-    # 2. Extract detected phonemes via Speech Recognizer (Allosaurus)
-    try:
-        recognizer = get_phoneme_recognizer()
-        raw_detected_ipa = recognizer.extract_phonemes(audio_path)
-    except Exception as e:
-        return f"Γ¥î Phoneme recognition failed: {e}", "", "", ""
-
-    # 3. Align expected vs detected via Needleman-Wunsch
-    try:
-        analysis = phoneme_aligner.align(
-            word=clean_word,
-            expected=expected_arpabet,
-            detected=raw_detected_ipa
-        )
-    except Exception as e:
-        return f"Γ¥î Alignment failed: {e}", "", "", ""
+        return f"Scoring failed for '{clean_word}': {e}", "", "", ""
+    scores_by_index = analysis.phoneme_scores
 
     # 4. Update session statistics
     for s, counts in analysis.target_sound_stats.items():
@@ -97,16 +81,20 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
         })
 
     # 5. Format Status Banner
-    is_correct = len(analysis.errors) == 0
+    is_correct = len(analysis.errors) == 0 and all(ps["status"] == "correct" for ps in scores_by_index)
     if is_correct:
         status_md = f"### Γ£à Excellent! All phonemes matched accurately for **'{clean_word}'**."
     else:
         err_details = ", ".join([f"{e['expected']} Γ₧ö {e['actual']}" for e in analysis.errors])
+        unclear = [ps["phoneme"] for ps in scores_by_index if ps["status"] == "unclear" and not ps["heard"]]
+        if unclear:
+            err_details = ", ".join(filter(None, [err_details, "unclear: " + " ".join(unclear)]))
         status_md = f"### ΓÜá∩╕Å Needs Practice: Substitution detected: **{err_details}**"
 
     # 6. Build Alignment Visual Table (HTML)
     table_rows = []
-    for align in analysis.alignments:
+    for i, align in enumerate(analysis.alignments):
+        score_cell = f"{scores_by_index[i]['score']:.0f}" if analysis.engine == "gop" else "-"
         exp = align.expected or "ΓÇö"
         act = align.actual or "ΓÇö"
         exp_ipa = ARPABET_TO_IPA.get(exp, exp) if exp != "ΓÇö" else "ΓÇö"
@@ -125,6 +113,7 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
         <tr style='background: {row_bg}; border-bottom: 1px solid #334155;'>
             <td style='padding: 8px 12px;'><b>{target_mark} {exp}</b> <span style='color: #94a3b8;'>/{exp_ipa}/</span></td>
             <td style='padding: 8px 12px;'><b>{act}</b> <span style='color: #94a3b8;'>/{act_ipa}/</span></td>
+            <td style='padding: 8px 12px;'>{score_cell}</td>
             <td style='padding: 8px 12px;'>{badge}</td>
         </tr>
         """)
@@ -136,6 +125,7 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
                 <tr style='border-bottom: 2px solid #475569; color: #60a5fa;'>
                     <th style='padding: 8px 12px;'>Expected Phoneme</th>
                     <th style='padding: 8px 12px;'>Heard Acoustic</th>
+                    <th style='padding: 8px 12px;'>Score /100</th>
                     <th style='padding: 8px 12px;'>Status</th>
                 </tr>
             </thead>
@@ -150,8 +140,9 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
     raw_details = f"""
 **Word:** `{clean_word.upper()}`  
 **Expected Canonical (ARPAbet):** `{' '.join(analysis.expected_phonemes)}`  
-**Detected Acoustic (IPA):** `{' '.join(raw_detected_ipa)}`  
-**Normalized Detected (ARPAbet):** `{' '.join(analysis.detected_phonemes)}`  
+**Detected (ARPAbet):** `{' '.join(analysis.detected_phonemes)}`  
+**Word Score:** `{analysis.word_score if analysis.word_score is not None else '-'}` / 100 | **Engine:** `{analysis.engine}`  
+**Recording:** `{(analysis.quality or {}).get('speech_sec', '-')}s speech, SNR {(analysis.quality or {}).get('snr_db', '-')} dB`  
     """
 
     # 8. Sound Stats Summary
@@ -210,7 +201,7 @@ def reset_stats():
 with gr.Blocks(title="Speech Coach - Phoneme Diagnostic Platform") as demo:
     gr.Markdown("""
     # ≡ƒÄÖ∩╕Å Pure Phoneme Diagnostic Platform
-    ### Mobile-Friendly Testing Harness ΓÇö *Allosaurus + Needleman-Wunsch Global Alignment*
+    ### Mobile-Friendly Testing Harness ΓÇö *wav2vec2 GOP (Goodness of Pronunciation) + CTC Forced Alignment*
     *This tests pure acoustic phoneme extraction directly from your voice without Speech-to-Text bias.*
     """)
 

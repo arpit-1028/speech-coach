@@ -17,8 +17,13 @@ class AlignmentAnalysis:
     detected_phonemes: List[str]
     alignments: List[PhonemeAlignment]
     errors: List[Dict[str, str]]
-    target_sound_stats: Dict[str, Dict[str, int]] = field(default_factory=dict)
-    # target_sound_stats: { "TH": {"correct": 0, "incorrect": 1} }
+    target_sound_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    # target_sound_stats: { "TH": {"correct": 0, "incorrect": 1, "score_sum": 12.5, "scored": 1} }
+    # Filled by the GOP engine only: per-phoneme 0-100 scores and the recording quality report
+    phoneme_scores: List[Dict[str, Any]] = field(default_factory=list)
+    word_score: Optional[float] = None
+    quality: Optional[Dict[str, Any]] = None
+    engine: str = "alignment"
 
 class PhonemeAligner:
     """

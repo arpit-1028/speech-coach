@@ -42,6 +42,9 @@ class WordAttempt(Base):
     detected_phonemes = Column(JSON, nullable=False)  # List[str] e.g. ["T", "IH", "NG", "K"]
     phoneme_errors = Column(JSON, default=list)      # List[dict] e.g. [{"expected": "TH", "actual": "T"}]
     audio_path = Column(String(500), nullable=True)
+    phoneme_scores = Column(JSON, nullable=True)      # GOP per phoneme: [{"phoneme": "TH", "score": 12.0, "status": "wrong", ...}]
+    word_score = Column(Float, nullable=True)         # Mean GOP score (0-100) of the word
+    quality = Column(JSON, nullable=True)             # Recording quality metrics (SNR, speech duration, ...)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     session = relationship("DiagnosticSession", back_populates="attempts")
@@ -57,6 +60,8 @@ class SoundScore(Base):
     correct_occurrences = Column(Integer, default=0, nullable=False)
     incorrect_occurrences = Column(Integer, default=0, nullable=False)
     mastery_percentage = Column(Float, default=0.0, nullable=False)
+    gop_score_sum = Column(Float, default=0.0, nullable=False)       # Sum of GOP scores (0-100)
+    gop_scored_occurrences = Column(Integer, default=0, nullable=False)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     user = relationship("User", back_populates="sound_scores")

@@ -1,7 +1,9 @@
+from fastapi.concurrency import run_in_threadpool
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
 import json
+import logging
 import uuid
 import datetime
 from pathlib import Path
@@ -9,7 +11,7 @@ from pathlib import Path
 from app.db.session import get_db
 from app.db.models import User, DiagnosticSession, WordAttempt
 from app.config import settings
-from app.data.word_sets import DIAGNOSTIC_WORD_SETS, ALL_WORDS
+from app.data.word_sets import DIAGNOSTIC_WORD_SETS, ALL_WORDS, INDIAN_ENGLISH_ACCENT_NOTES
 from app.schemas.diagnostic import (
     DiagnosticStartRequest,
     DiagnosticStartResponse,
@@ -17,12 +19,13 @@ from app.schemas.diagnostic import (
     DiagnosticReportResponse
 )
 from app.alignment.cmudict_service import cmu_service
-from app.alignment.aligner import phoneme_aligner
 from app.engines.confusion_matrix import confusion_matrix_engine
 from app.engines.sound_mastery import sound_mastery_engine
 from app.engines.learning_path import learning_path_engine
 from app.engines.diagnostic_report import diagnostic_report_generator
-from app.speech.factory import get_phoneme_recognizer
+from app.speech.pipeline import analyze_attempt, AudioQualityError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,8 +36,19 @@ def get_diagnostic_words():
         "target_sounds": settings.TARGET_SOUNDS,
         "word_sets": DIAGNOSTIC_WORD_SETS,
         "total_words": len(ALL_WORDS),
-        "all_words": ALL_WORDS
+        "all_words": ALL_WORDS,
+        "indian_english_accent_notes": INDIAN_ENGLISH_ACCENT_NOTES
     }
+
+@router.get("/diagnostic/phonemes/{word}", tags=["Diagnostic"])
+def get_word_phonemes(word: str):
+    """Looks up a word's canonical phonemes without recording an attempt (used for UI previews)."""
+    clean_word = word.strip().lower()
+    try:
+        phonemes = cmu_service.get_phonemes(clean_word)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Unable to retrieve phonemes for word '{word}': {str(e)}")
+    return {"word": clean_word, "expected_phonemes": phonemes}
 
 @router.post("/diagnostic/start", response_model=DiagnosticStartResponse, tags=["Diagnostic"])
 def start_diagnostic_session(
@@ -114,15 +128,14 @@ async def submit_diagnostic_attempt(
     else:
         raise HTTPException(status_code=400, detail="Either session_id or user_id must be provided")
 
-    # 2. Get Expected Phonemes from CMUdict
+    # 2. Make sure the word has a reference pronunciation
     try:
-        expected_phonemes = cmu_service.get_phonemes(clean_word)
+        cmu_service.get_phonemes(clean_word)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Unable to retrieve phonemes for word '{word}': {str(e)}")
 
-    # 3. Extract Detected Phonemes
+    # 3. Score the attempt: quality gate (VAD) -> GOP forced-alignment scoring
     audio_path_str = None
-    extracted_phonemes: List[str] = []
 
     if audio:
         # Save audio file to upload directory
@@ -136,12 +149,16 @@ async def submit_diagnostic_attempt(
 
         audio_path_str = str(save_path)
 
-        # Extract using the configured speech engine (Allosaurus by default)
-        recognizer = get_phoneme_recognizer()
         try:
-            extracted_phonemes = recognizer.extract_phonemes(save_path)
+            # Model inference is CPU-bound; keep it off the event loop
+            analysis = await run_in_threadpool(analyze_attempt, clean_word, audio_path=save_path)
+        except AudioQualityError as e:
+            # Bad recordings are not scored: nothing is saved, the client should ask to re-record.
+            # detail stays a plain string because the web clients display it directly.
+            logger.info("Rejected recording for '%s': %s", clean_word, e.report.to_dict())
+            raise HTTPException(status_code=422, detail=e.report.reason)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Phoneme extraction failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Phoneme scoring failed: {str(e)}")
 
     elif detected_phonemes:
         # Directly supplied phonemes (useful for mock testing or client-side pre-extracted phonemes)
@@ -153,18 +170,12 @@ async def submit_diagnostic_attempt(
                 extracted_phonemes = str(detected_phonemes).strip().split()
         except Exception:
             extracted_phonemes = detected_phonemes.strip().split()
+        analysis = analyze_attempt(clean_word, detected_phonemes=extracted_phonemes)
     else:
         raise HTTPException(
             status_code=400,
             detail="Either 'audio' file upload or 'detected_phonemes' must be provided."
         )
-
-    # 4. Phoneme Alignment (Needleman-Wunsch Dynamic Programming)
-    analysis = phoneme_aligner.align(
-        word=clean_word,
-        expected=expected_phonemes,
-        detected=extracted_phonemes
-    )
 
     # 5. Persist WordAttempt
     attempt = WordAttempt(
@@ -174,6 +185,9 @@ async def submit_diagnostic_attempt(
         expected_phonemes=analysis.expected_phonemes,
         detected_phonemes=analysis.detected_phonemes,
         phoneme_errors=analysis.errors,
+        phoneme_scores=analysis.phoneme_scores or None,
+        word_score=analysis.word_score,
+        quality=analysis.quality,
         audio_path=audio_path_str,
         timestamp=datetime.datetime.utcnow()
     )
@@ -188,7 +202,10 @@ async def submit_diagnostic_attempt(
     db.commit()
     db.refresh(attempt)
 
-    is_correct = len(analysis.errors) == 0
+    # With GOP an "unclear" phoneme is not a recorded substitution but still not correct
+    is_correct = len(analysis.errors) == 0 and all(
+        ps["status"] == "correct" for ps in analysis.phoneme_scores
+    )
 
     return WordAttemptResponse(
         id=attempt.id,
@@ -199,6 +216,9 @@ async def submit_diagnostic_attempt(
         detected_phonemes=attempt.detected_phonemes,
         phoneme_errors=attempt.phoneme_errors,
         is_correct=is_correct,
+        word_score=attempt.word_score,
+        phoneme_scores=attempt.phoneme_scores or [],
+        quality=attempt.quality,
         audio_path=attempt.audio_path,
         timestamp=attempt.timestamp
     )
@@ -206,16 +226,18 @@ async def submit_diagnostic_attempt(
 @router.get("/diagnostic/report/{user_id}", response_model=DiagnosticReportResponse, tags=["Diagnostic"])
 def get_diagnostic_report(
     user_id: int,
+    session_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Compiles and returns the evidence-based pronunciation diagnostic report
-    categorizing strong vs weak sounds, concrete substitution patterns, and
-    recommended dynamic learning paths.
+    Compiles and returns the evidence-based pronunciation diagnostic report:
+    strong/weak sounds, substitution patterns, recommended learning paths, and
+    (when session_id is given, or always for the answer-by-answer section) a
+    word-by-word breakdown of every attempt with its score and status.
     """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail=f"User {user_id} not found")
 
-    report = diagnostic_report_generator.generate_report(db, user_id)
+    report = diagnostic_report_generator.generate_report(db, user_id, session_id=session_id)
     return report

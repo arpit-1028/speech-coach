@@ -11,4 +11,9 @@ google-genai
 edge-tts
 faster-whisper
 python-dotenv
-requests
+requests
+numpy
+allosaurus
+cmudict
+sqlalchemy
+av

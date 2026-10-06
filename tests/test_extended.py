@@ -18,8 +18,8 @@ def test_all_diagnostic_words_in_cmudict():
     assert len(missing) == 0, f"Missing words in CMUdict: {missing}"
 
 def test_all_target_sounds_present():
-    """Verify that all 8 target sounds (TH, SH, S, V, W, R, L, CH) are present in the word sets."""
-    expected_sounds = {"TH", "SH", "S", "V", "W", "R", "L", "CH"}
+    """Verify all 12 target sounds (incl. DH/ZH/Z/JH, added for Indian-English coverage) are in the word sets."""
+    expected_sounds = {"TH", "DH", "SH", "ZH", "S", "Z", "V", "W", "R", "L", "CH", "JH"}
     assert set(DIAGNOSTIC_WORD_SETS.keys()) == expected_sounds
 
 def test_phoneme_aligner_deletions_and_insertions():
@@ -67,6 +67,37 @@ def test_full_learning_path_progression(db_session):
     v_stages = paths["V"]["stages"]
     for stage_data in v_stages:
         assert stage_data["is_unlocked"] is True, f"Stage {stage_data['stage']} should be unlocked"
+
+
+def test_weak_sound_unlocks_practice_words(db_session):
+    """A weak sound's Foundation stage auto-unlocks and comes with its practice word list."""
+    from app.engines.sound_mastery import sound_mastery_engine
+    from app.engines.learning_path import learning_path_engine
+
+    user = User(name="WeakSoundTester", email="weak@test.com")
+    db_session.add(user)
+    db_session.commit()
+
+    # SH diagnosed weak: 2 correct / 8 incorrect = 20% mastery
+    for _ in range(2):
+        sound_mastery_engine.update_scores_from_attempt(db_session, user.id, {"SH": {"correct": 1, "incorrect": 0}})
+    for _ in range(8):
+        sound_mastery_engine.update_scores_from_attempt(db_session, user.id, {"SH": {"correct": 0, "incorrect": 1}})
+    db_session.commit()
+
+    learning_path_engine.evaluate_unlocks(db_session, user.id)
+    db_session.commit()
+
+    paths = learning_path_engine.get_user_learning_path(db_session, user.id)
+    sh = paths["SH"]
+    assert any(s["stage"] == "Foundation" and s["is_unlocked"] for s in sh["stages"])
+    assert "ship" in sh["practice_words"]
+    assert len(sh["practice_words"]) > 0
+
+    # An untested sound must stay locked and expose no practice words yet
+    jh = paths["JH"]
+    assert all(not s["is_unlocked"] for s in jh["stages"])
+    assert jh["practice_words"] == []
 
 def test_api_submit_validation_errors(client):
     # 1. Missing session_id and user_id

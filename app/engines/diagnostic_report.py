@@ -2,7 +2,9 @@ from typing import Dict, List, Any, Optional
 from sqlalchemy.orm import Session
 from app.db.models import SoundScore, WordAttempt, ConfusionMatrix
 from app.config import settings
+from app.data.word_sets import WORD_TARGET_MAP
 from app.engines.confusion_matrix import confusion_matrix_engine
+from app.engines.sound_mastery import wilson_interval, average_gop_score
 
 class DiagnosticReportGenerator:
     """
@@ -10,7 +12,7 @@ class DiagnosticReportGenerator:
     Accumulates evidence across words; never concludes weakness from a single attempt.
     """
 
-    def generate_report(self, db: Session, user_id: int) -> Dict[str, Any]:
+    def generate_report(self, db: Session, user_id: int, session_id: Optional[int] = None) -> Dict[str, Any]:
         scores = db.query(SoundScore).filter(SoundScore.user_id == user_id).all()
         score_map = {s.phoneme: s for s in scores}
 
@@ -29,16 +31,16 @@ class DiagnosticReportGenerator:
             if total == 0:
                 continue
 
-            if sc.mastery_percentage >= settings.STRONG_THRESHOLD:
+            # Decide with the 95% Wilson interval, not the raw percentage, so a handful
+            # of lucky/unlucky attempts (or recognizer slips) cannot settle the verdict.
+            ci_low, ci_high = wilson_interval(sc.correct_occurrences, total)
+            if sc.mastery_percentage >= settings.STRONG_THRESHOLD and ci_low >= settings.WEAK_THRESHOLD:
                 strong_sounds.append(sound)
-            elif sc.mastery_percentage < settings.WEAK_THRESHOLD:
-                # Only conclude weakness if accumulated evidence meets minimum threshold
-                if total >= settings.MIN_OCCURRENCES_FOR_DIAGNOSIS:
-                    weak_sounds.append(sound)
-                    analysis = self._build_sound_analysis(db, user_id, sound, sc)
-                    weak_analyses.append(analysis)
-                else:
-                    developing_sounds.append(sound)
+            elif (sc.mastery_percentage < settings.WEAK_THRESHOLD
+                  and ci_high < settings.STRONG_THRESHOLD
+                  and total >= settings.MIN_OCCURRENCES_FOR_DIAGNOSIS):
+                weak_sounds.append(sound)
+                weak_analyses.append(self._build_sound_analysis(db, user_id, sound, sc))
             else:
                 developing_sounds.append(sound)
 
@@ -50,11 +52,19 @@ class DiagnosticReportGenerator:
             f"{analysis['sound']} Foundation" for analysis in weak_analyses
         ]
 
+        # Answer-by-answer breakdown for the specific test run (or all history
+        # when no session is given), so a teacher/learner can see exactly which
+        # word was said how, not just the aggregated per-sound mastery.
+        attempts = self._build_attempt_history(db, user_id, session_id)
+        test_summary = self._build_test_summary(attempts)
+
         text_report = self._format_ascii_report(
             strong_sounds=strong_sounds,
             weak_sounds=[a["sound"] for a in weak_analyses],
             weak_analyses=weak_analyses,
-            recommended_learning_path=recommended_learning_path
+            recommended_learning_path=recommended_learning_path,
+            attempts=attempts,
+            test_summary=test_summary,
         )
 
         return {
@@ -64,7 +74,50 @@ class DiagnosticReportGenerator:
             "developing_sounds": developing_sounds,
             "sound_analyses": weak_analyses,
             "recommended_learning_path": recommended_learning_path,
+            "test_summary": test_summary,
+            "attempts": attempts,
             "formatted_text_report": text_report
+        }
+
+    def _build_attempt_history(
+        self, db: Session, user_id: int, session_id: Optional[int]
+    ) -> List[Dict[str, Any]]:
+        query = db.query(WordAttempt).filter(WordAttempt.user_id == user_id)
+        if session_id is not None:
+            query = query.filter(WordAttempt.session_id == session_id)
+        rows = query.order_by(WordAttempt.timestamp.asc()).all()
+
+        attempts = []
+        for att in rows:
+            phoneme_scores = att.phoneme_scores or []
+            is_correct = not att.phoneme_errors and all(
+                ps.get("status") == "correct" for ps in phoneme_scores
+            )
+            unclear = [ps["phoneme"] for ps in phoneme_scores if ps.get("status") == "unclear"]
+            attempts.append({
+                "attempt_id": att.id,
+                "word": att.word,
+                "target_sound": WORD_TARGET_MAP.get(att.word),
+                "expected_phonemes": att.expected_phonemes,
+                "detected_phonemes": att.detected_phonemes,
+                "word_score": att.word_score,
+                "is_correct": is_correct,
+                "errors": att.phoneme_errors or [],
+                "unclear_phonemes": unclear,
+                "phoneme_scores": phoneme_scores,
+                "timestamp": att.timestamp.isoformat() if att.timestamp else None,
+            })
+        return attempts
+
+    def _build_test_summary(self, attempts: List[Dict[str, Any]]) -> Dict[str, Any]:
+        total = len(attempts)
+        correct = sum(1 for a in attempts if a["is_correct"])
+        scored = [a["word_score"] for a in attempts if a["word_score"] is not None]
+        return {
+            "total_words_tested": total,
+            "correct_words": correct,
+            "accuracy_percentage": round(100.0 * correct / total, 1) if total else 0.0,
+            "average_word_score": round(sum(scored) / len(scored), 1) if scored else None,
         }
 
     def _build_sound_analysis(
@@ -72,10 +125,13 @@ class DiagnosticReportGenerator:
     ) -> Dict[str, Any]:
         total = sc.correct_occurrences + sc.incorrect_occurrences
 
-        # Confidence based on accumulated sample size
-        if total >= settings.HIGH_CONFIDENCE_OCCURRENCES:
+        # Confidence from the width of the Wilson interval (narrow = more certain)
+        ci_low, ci_high = wilson_interval(sc.correct_occurrences, total)
+        width = ci_high - ci_low
+        # Roughly: High needs ~25 samples, Medium ~12 (at mid-range accuracy)
+        if width <= 36:
             confidence = "High"
-        elif total >= settings.MEDIUM_CONFIDENCE_OCCURRENCES:
+        elif width <= 50:
             confidence = "Medium"
         else:
             confidence = "Low"
@@ -104,7 +160,10 @@ class DiagnosticReportGenerator:
             "common_error": common_error_str,
             "examples": examples,
             "assessment": assessment,
-            "confidence": confidence
+            "confidence": confidence,
+            "ci_low": ci_low,
+            "ci_high": ci_high,
+            "avg_gop_score": average_gop_score(sc),
         }
 
     def _build_assessment_text(self, sound: str, top_sub: Optional[str]) -> str:
@@ -112,11 +171,17 @@ class DiagnosticReportGenerator:
             return f"User exhibits inconsistent articulation of {sound}."
 
         if sound == "TH" and top_sub == "T":
-            return "User frequently substitutes TH with T."
+            return "User frequently substitutes TH with T (dentalization, common in Indian English)."
         elif sound == "TH" and top_sub == "D":
             return "User frequently substitutes TH with D."
+        elif sound == "DH" and top_sub == "D":
+            return "User frequently substitutes voiced TH (DH) with D (dentalization, common in Indian English)."
+        elif sound == "DH" and top_sub == "T":
+            return "User frequently devoices DH into T."
+        elif sound == "ZH" and top_sub in ("Z", "JH"):
+            return f"User substitutes ZH with {top_sub} ({'voicing shift' if top_sub == 'Z' else 'affrication'}, common in Indian English)."
         elif (sound == "V" and top_sub == "W") or (sound == "W" and top_sub == "V"):
-            return "User struggles to distinguish V and W."
+            return "User merges V and W into a single sound (common V/W merger in Indian English)."
         elif sound == "SH" and top_sub == "S":
             return "User frequently substitutes postalveolar SH with alveolar S."
         elif (sound == "R" and top_sub == "L") or (sound == "L" and top_sub == "R"):
@@ -157,9 +222,13 @@ class DiagnosticReportGenerator:
 
     def _render_spoken_word(self, word: str, sound: str, top_sub: str) -> str:
         w = word.lower()
-        if sound == "TH":
+        if sound in ("TH", "DH"):
             sub_char = top_sub.lower()
             return w.replace("th", sub_char, 1)
+        elif sound == "ZH":
+            # ZH words are spelled inconsistently (measure, vision, garage); no
+            # reliable single-letter swap, so just annotate instead of rewriting.
+            return f"{w} [{top_sub}]"
         elif sound == "SH":
             return w.replace("sh", top_sub.lower(), 1)
         elif sound == "V":
@@ -179,14 +248,43 @@ class DiagnosticReportGenerator:
         strong_sounds: List[str],
         weak_sounds: List[str],
         weak_analyses: List[Dict[str, Any]],
-        recommended_learning_path: List[str]
+        recommended_learning_path: List[str],
+        attempts: Optional[List[Dict[str, Any]]] = None,
+        test_summary: Optional[Dict[str, Any]] = None,
     ) -> str:
         lines = [
             "=================================================",
             "PRONUNCIATION DIAGNOSTIC REPORT",
             "=================================================\n",
-            "Strong Sounds:"
         ]
+
+        if test_summary and test_summary.get("total_words_tested"):
+            lines.append("TEST SUMMARY")
+            lines.append(f"Words tested: {test_summary['total_words_tested']}")
+            lines.append(
+                f"Correct: {test_summary['correct_words']} "
+                f"({test_summary['accuracy_percentage']}%)"
+            )
+            if test_summary.get("average_word_score") is not None:
+                lines.append(f"Average pronunciation score: {test_summary['average_word_score']} / 100")
+            lines.append("")
+
+        if attempts:
+            lines.append("ANSWER-BY-ANSWER RESULTS")
+            lines.append("-------------------------------------------------")
+            for a in attempts:
+                mark = "CORRECT" if a["is_correct"] else "NEEDS PRACTICE"
+                score_str = f"{a['word_score']:.0f}/100" if a["word_score"] is not None else "n/a"
+                sound_str = f" [{a['target_sound']}]" if a.get("target_sound") else ""
+                lines.append(f"{a['word'].upper()}{sound_str} — {mark} ({score_str})")
+                if a["errors"]:
+                    detail = ", ".join(f"{e['expected']}->{e['actual']}" for e in a["errors"])
+                    lines.append(f"    heard: {detail}")
+                if a["unclear_phonemes"]:
+                    lines.append(f"    unclear: {' '.join(a['unclear_phonemes'])}")
+            lines.append("")
+
+        lines.append("Strong Sounds:")
         if strong_sounds:
             for s in strong_sounds:
                 lines.append(s)
@@ -205,6 +303,11 @@ class DiagnosticReportGenerator:
             lines.append(f"{a['sound']} ANALYSIS\n")
             lines.append("Occurrences Tested:")
             lines.append(str(a["occurrences_tested"]))
+            lines.append("\nLikely Accuracy Range (95%):")
+            lines.append(f"{a['ci_low']}% - {a['ci_high']}%")
+            if a.get("avg_gop_score") is not None:
+                lines.append("\nAverage Pronunciation Score:")
+                lines.append(f"{a['avg_gop_score']} / 100")
             lines.append("\nCorrect:")
             lines.append(str(a["correct"]))
             lines.append("\nIncorrect:")

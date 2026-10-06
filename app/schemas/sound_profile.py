@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 class SoundStat(BaseModel):
     correct: int
@@ -7,6 +7,9 @@ class SoundStat(BaseModel):
     total: int
     mastery_percentage: float
     substitution_patterns: List[str]
+    avg_gop_score: Optional[float] = None
+    ci_low: Optional[float] = None
+    ci_high: Optional[float] = None
 
 class SoundProfileResponse(BaseModel):
     user_id: int

@@ -36,3 +36,5 @@ Thumbs.db
 # Environment Variables
 .env
 .env.*
+.certs/
+.tools/

@@ -26,35 +26,39 @@ def ensure_wav_16k_mono(input_path: Path) -> Path:
 
     try:
         import av
-        container = av.open(str(input_path))
-        audio_streams = [s for s in container.streams if s.type == "audio"]
-        if not audio_streams:
-            raise ValueError("No audio stream found in input file.")
-
-        in_stream = audio_streams[0]
-
-        out_container = av.open(str(converted_path), mode="w", format="wav")
-        out_stream = out_container.add_stream("pcm_s16le", rate=16000)
-        out_stream.channels = 1
-
-        resampler = av.AudioResampler(
-            format="s16",
-            layout="mono",
-            rate=16000
-        )
-
-        for frame in container.decode(in_stream):
-            for resampled_frame in resampler.resample(frame):
-                for packet in out_stream.encode(resampled_frame):
-                    out_container.mux(packet)
-
-        # Flush encoder
-        for packet in out_stream.encode():
-            out_container.mux(packet)
-
-        out_container.close()
-        container.close()
-        return converted_path
-    except Exception as e:
-        logger.warning("PyAV transcoding failed or unavailable: %s. Using original file.", e)
+    except ImportError:
+        # No transcoder available at all: let the caller's wave/soundfile reader
+        # try the file as-is (works for e.g. a browser that recorded raw WAV).
+        logger.warning("PyAV not installed; passing audio through unconverted.")
         return input_path
+
+    # Deliberately NOT caught here: a real transcoding failure (corrupt upload,
+    # unsupported codec, a PyAV API break) must surface with its own traceback.
+    # Swallowing it used to make every such failure resurface two layers down as
+    # a confusing "soundfile: Format not recognised" on the original webm instead.
+    container = av.open(str(input_path))
+    audio_streams = [s for s in container.streams if s.type == "audio"]
+    if not audio_streams:
+        raise ValueError(f"No audio stream found in '{input_path}'.")
+
+    in_stream = audio_streams[0]
+
+    out_container = av.open(str(converted_path), mode="w", format="wav")
+    # `layout` must be passed to add_stream(), not set afterwards: newer PyAV
+    # (17.x) made AudioCodecContext.channels/layout read-only post-creation.
+    out_stream = out_container.add_stream("pcm_s16le", rate=16000, layout="mono")
+
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+
+    for frame in container.decode(in_stream):
+        for resampled_frame in resampler.resample(frame):
+            for packet in out_stream.encode(resampled_frame):
+                out_container.mux(packet)
+
+    # Flush encoder
+    for packet in out_stream.encode():
+        out_container.mux(packet)
+
+    out_container.close()
+    container.close()
+    return converted_path

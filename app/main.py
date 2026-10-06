@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.db.session import engine, Base
+from app.db.session import engine, Base, ensure_schema_columns
 from app.db import models  # noqa: F401 - ensures all models are registered
 from app.api.v1.diagnostic import router as diagnostic_router
 from app.api.v1.sound_profile import router as sound_profile_router
@@ -13,6 +13,7 @@ from app.api.v1.learning_path import router as learning_path_router
 async def lifespan(app: FastAPI):
     # Create DB tables if they don't exist
     Base.metadata.create_all(bind=engine)
+    ensure_schema_columns(engine)
     yield
 
 app = FastAPI(

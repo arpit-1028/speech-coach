@@ -10,6 +10,9 @@ class PhonemeRecognizer(ABC):
     without modifying business logic or database operations.
     """
 
+    # Whether recordings must pass the VAD / quality gate before being scored
+    uses_quality_gate: bool = True
+
     @abstractmethod
     def extract_phonemes(self, audio_path: Union[str, Path]) -> List[str]:
         """

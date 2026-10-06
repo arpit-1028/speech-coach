@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirenments.txt
 # Pre-download Whisper model as fallback (primary transcription uses Groq Cloud API)
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', compute_type='int8')"
 
+# Pre-download the wav2vec2 phoneme model used for GOP pronunciation scoring
+RUN python -c "from transformers import Wav2Vec2ForCTC, Wav2Vec2FeatureExtractor; from huggingface_hub import hf_hub_download; m='facebook/wav2vec2-lv-60-espeak-cv-ft'; Wav2Vec2FeatureExtractor.from_pretrained(m); Wav2Vec2ForCTC.from_pretrained(m); hf_hub_download(m, 'vocab.json')"
+
 # Copy the rest of the application code
 COPY . .
 

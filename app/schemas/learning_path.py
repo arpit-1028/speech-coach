@@ -10,6 +10,8 @@ class SoundLearningPath(BaseModel):
     sound: str
     mastery_percentage: float
     stages: List[StageStatus]
+    practice_words: List[str] = []
+    accent_note: Optional[str] = None
 
 class LearningPathResponse(BaseModel):
     user_id: int

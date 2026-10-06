@@ -28,8 +28,30 @@ class WordAttemptResponse(BaseModel):
     detected_phonemes: List[str]
     phoneme_errors: List[PhonemeError]
     is_correct: bool
+    word_score: Optional[float] = None
+    phoneme_scores: List[Dict[str, Any]] = []
+    quality: Optional[Dict[str, Any]] = None
     audio_path: Optional[str]
     timestamp: datetime
+
+class AttemptResult(BaseModel):
+    attempt_id: int
+    word: str
+    target_sound: Optional[str] = None
+    expected_phonemes: List[str]
+    detected_phonemes: List[str]
+    word_score: Optional[float] = None
+    is_correct: bool
+    errors: List[PhonemeError]
+    unclear_phonemes: List[str] = []
+    phoneme_scores: List[Dict[str, Any]] = []
+    timestamp: Optional[str] = None
+
+class TestSummary(BaseModel):
+    total_words_tested: int
+    correct_words: int
+    accuracy_percentage: float
+    average_word_score: Optional[float] = None
 
 class SoundAnalysis(BaseModel):
     sound: str
@@ -41,6 +63,9 @@ class SoundAnalysis(BaseModel):
     examples: List[str]
     assessment: str
     confidence: str
+    ci_low: Optional[float] = None
+    ci_high: Optional[float] = None
+    avg_gop_score: Optional[float] = None
 
 class DiagnosticReportResponse(BaseModel):
     user_id: int
@@ -49,4 +74,6 @@ class DiagnosticReportResponse(BaseModel):
     developing_sounds: List[str]
     sound_analyses: List[SoundAnalysis]
     recommended_learning_path: List[str]
+    test_summary: Optional[TestSummary] = None
+    attempts: List[AttemptResult] = []
     formatted_text_report: str

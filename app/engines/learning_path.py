@@ -2,6 +2,7 @@ from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from app.db.models import UnlockedPath, SoundScore
 from app.config import settings
+from app.data.word_sets import get_words_for_sound, INDIAN_ENGLISH_ACCENT_NOTES
 import datetime
 
 STAGES_ORDER = [
@@ -120,10 +121,15 @@ class DynamicLearningPathEngine:
                     "unlocked_at": rec.unlocked_at.isoformat() if rec and rec.unlocked_at else None
                 })
 
+            foundation_unlocked = any(s["stage"] == "Foundation" and s["is_unlocked"] for s in stages_data)
             tree[sound] = {
                 "sound": sound,
                 "mastery_percentage": sound_score.mastery_percentage if sound_score else 0.0,
-                "stages": stages_data
+                "stages": stages_data,
+                # Only surfaced once Foundation is unlocked (i.e. this sound has been
+                # diagnosed as weak) - that's the actual "practice this" word list.
+                "practice_words": get_words_for_sound(sound) if foundation_unlocked else [],
+                "accent_note": INDIAN_ENGLISH_ACCENT_NOTES.get(sound),
             }
 
         return tree

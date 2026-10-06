@@ -22,6 +22,25 @@ class CMUdictService:
                 logger.error("Failed to load cmudict package: %s", e)
                 self._cmu_dict = {}
 
+    def get_pronunciations(self, word: str) -> List[List[str]]:
+        """
+        Returns every accepted pronunciation (stress removed), primary first.
+        Multi-word phrases are concatenated word by word.
+        Example: 'either' -> [['IY', 'DH', 'ER'], ['AY', 'DH', 'ER']]
+        """
+        self._load_dict()
+        words = word.strip().lower().split()
+        if len(words) > 1:
+            return [[p for w in words for p in self.get_phonemes(w)]]
+
+        clean_word = words[0] if words else ""
+        prons: List[List[str]] = []
+        for pron in (self._cmu_dict or {}).get(clean_word, []):
+            stripped = [''.join(c for c in phone if not c.isdigit()).upper() for phone in pron]
+            if stripped not in prons:
+                prons.append(stripped)
+        return prons or [self.get_phonemes(clean_word)]
+
     def get_phonemes(self, word: str) -> List[str]:
         """
         Retrieves expected ARPAbet phonemes for a word without stress numbers.

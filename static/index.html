@@ -322,13 +322,17 @@
           <label>Target Sound</label>
           <select id="soundSelect" onchange="onSoundChange()">
             <option value="TH">TH (think, teeth)</option>
+            <option value="DH">DH (this, mother)</option>
             <option value="SH">SH (ship, wish)</option>
+            <option value="ZH">ZH (measure, vision)</option>
+            <option value="S">S (sun, dance)</option>
+            <option value="Z">Z (zoo, rose)</option>
             <option value="V">V (vine, love)</option>
             <option value="W">W (water, away)</option>
             <option value="R">R (red, door)</option>
             <option value="L">L (light, ball)</option>
-            <option value="S">S (sun, dance)</option>
             <option value="CH">CH (chair, beach)</option>
+            <option value="JH">JH (jump, bridge)</option>
           </select>
         </div>
 
@@ -447,11 +451,14 @@
       const select = document.getElementById("wordSelect");
       select.innerHTML = "";
       let words = [];
+      const entry = wordSets[sound];
 
-      if (sound === "TH") {
-        words = [...wordSets.TH.initial, ...wordSets.TH.middle, ...wordSets.TH.final];
-      } else if (wordSets[sound]) {
-        words = wordSets[sound];
+      // Some sounds (TH, DH) are stored by word position (initial/middle/final)
+      // instead of a flat list - flatten either shape the same way.
+      if (Array.isArray(entry)) {
+        words = entry;
+      } else if (entry) {
+        words = [...(entry.initial || []), ...(entry.middle || []), ...(entry.final || [])];
       }
 
       words.forEach(w => {
@@ -481,16 +488,15 @@
       else if (word === "ship") simInput.value = "S IH P";
       else simInput.value = "";
 
-      // Quick fetch preview of phonemes
-      fetch(`/diagnostic/submit`, {
-        method: "POST",
-        body: new URLSearchParams({ session_id: currentSessionId || 1, word: word, detected_phonemes: "[]" })
-      }).then(r => r.json()).then(data => {
-        if (data.expected_phonemes) {
-          document.getElementById("displayPhonemes").textContent =
-            "Expected: " + data.expected_phonemes.join(" · ");
-        }
-      }).catch(() => {});
+      // Quick read-only preview of the expected phonemes (does not record an attempt)
+      fetch(`/diagnostic/phonemes/${encodeURIComponent(word)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.expected_phonemes) {
+            document.getElementById("displayPhonemes").textContent =
+              "Expected: " + data.expected_phonemes.join(" · ");
+          }
+        }).catch(() => {});
     }
 
     async function initSession() {
@@ -517,8 +523,11 @@
     }
 
     // Microphone Recording Logic (WAV/WebM)
+    const MAX_RECORD_MS = 2500; // Duolingo-style: auto-stop a single word attempt
+    let recordTimeout = null;
+    let recordCountdownInterval = null;
+
     async function toggleRecording() {
-      const btn = document.getElementById("recordBtn");
       const status = document.getElementById("recordStatus");
 
       if (!isRecording) {
@@ -545,23 +554,45 @@
 
           mediaRecorder.start();
           isRecording = true;
-          btn.classList.add("recording");
-          btn.textContent = "⏹️";
-          status.textContent = "Recording... Speak clearly into your mic, then click stop.";
+          document.getElementById("recordBtn").classList.add("recording");
+          document.getElementById("recordBtn").textContent = "⏹️";
           status.style.color = "#ef4444";
+
+          // Auto-stop after MAX_RECORD_MS so you don't have to remember to
+          // click stop - and so a recording can't accidentally capture the
+          // word said more than once (which breaks the phoneme alignment).
+          let msLeft = MAX_RECORD_MS;
+          status.textContent = `Recording... say the word once (auto-stops in ${(msLeft / 1000).toFixed(1)}s)`;
+          recordCountdownInterval = setInterval(() => {
+            msLeft -= 100;
+            if (msLeft > 0) {
+              status.textContent = `Recording... say the word once (auto-stops in ${(msLeft / 1000).toFixed(1)}s)`;
+            }
+          }, 100);
+          recordTimeout = setTimeout(stopRecording, MAX_RECORD_MS);
         } catch (err) {
           alert("Microphone access denied or not available: " + err.message);
         }
       } else {
-        // Stop recording
-        mediaRecorder.stop();
-        mediaRecorder.stream.getTracks().forEach(t => t.stop());
-        isRecording = false;
-        btn.classList.remove("recording");
-        btn.textContent = "🎙️";
-        status.textContent = "Processing audio with speech recognizer...";
-        status.style.color = "#3b82f6";
+        stopRecording();
       }
+    }
+
+    function stopRecording() {
+      if (!isRecording) return;
+      clearTimeout(recordTimeout);
+      clearInterval(recordCountdownInterval);
+      recordTimeout = null;
+      recordCountdownInterval = null;
+
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+      isRecording = false;
+      document.getElementById("recordBtn").classList.remove("recording");
+      document.getElementById("recordBtn").textContent = "🎙️";
+      const status = document.getElementById("recordStatus");
+      status.textContent = "Processing audio with speech recognizer...";
+      status.style.color = "#3b82f6";
     }
 
     async function submitAudioAttempt(blob) {
@@ -576,6 +607,10 @@
           method: "POST",
           body: formData
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || res.statusText);
+        }
         const data = await res.json();
         renderAttemptResult(data);
         await refreshProfile();
@@ -583,6 +618,7 @@
         await refreshLearningPath();
       } catch (err) {
         document.getElementById("recordStatus").textContent = "Submission failed: " + err.message;
+        document.getElementById("recordStatus").style.color = "#ef4444";
       }
     }
 
@@ -599,6 +635,10 @@
           method: "POST",
           body: formData
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || res.statusText);
+        }
         const data = await res.json();
         renderAttemptResult(data);
         await refreshProfile();
@@ -616,6 +656,7 @@
 
       const exp = attempt.expected_phonemes || [];
       const det = attempt.detected_phonemes || [];
+      const errors = attempt.phoneme_errors || [];
       const maxLen = Math.max(exp.length, det.length);
 
       for (let i = 0; i < maxLen; i++) {
@@ -635,15 +676,20 @@
 
       const status = document.getElementById("recordStatus");
       const summary = document.getElementById("errorSummary");
+      const scoreStr = (typeof attempt.word_score === "number") ? ` (Score: ${attempt.word_score.toFixed(0)}/100)` : "";
       if (attempt.is_correct) {
-        status.textContent = "✅ Correct Pronunciation!";
+        status.textContent = "✅ Correct Pronunciation!" + scoreStr;
         status.style.color = "#10b981";
         summary.innerHTML = "<span style='color: #10b981;'>All target phonemes articulated accurately.</span>";
       } else {
-        status.textContent = "⚠️ Phoneme Substitution Detected";
+        status.textContent = "⚠️ Needs Practice" + scoreStr;
         status.style.color = "#ef4444";
-        const errs = attempt.phoneme_errors.map(e => `<b>${e.expected} → ${e.actual}</b>`).join(", ");
-        summary.innerHTML = `<span style='color: #ef4444;'>Substitution Errors: ${errs}</span>`;
+        if (errors.length > 0) {
+          const errs = errors.map(e => `<b>${e.expected} → ${e.actual}</b>`).join(", ");
+          summary.innerHTML = `<span style='color: #ef4444;'>Substitution Errors: ${errs}</span>`;
+        } else {
+          summary.innerHTML = "<span style='color: #f59e0b;'>Pronunciation was unclear — try saying the word again more clearly.</span>";
+        }
       }
     }
 
@@ -711,7 +757,10 @@
     async function refreshReport() {
       if (!currentUserId) return;
       try {
-        const res = await fetch(`/diagnostic/report/${currentUserId}`);
+        const url = currentSessionId
+          ? `/diagnostic/report/${currentUserId}?session_id=${currentSessionId}`
+          : `/diagnostic/report/${currentUserId}`;
+        const res = await fetch(url);
         const data = await res.json();
         document.getElementById("reportContent").textContent = data.formatted_text_report;
       } catch (err) {
@@ -727,10 +776,22 @@
         const list = document.getElementById("pathList");
         list.innerHTML = "";
 
-        Object.entries(data.learning_paths).forEach(([sound, info]) => {
+        // Sounds with an unlocked (weak -> practice needed) level float to the top
+        const entries = Object.entries(data.learning_paths).sort(([, a], [, b]) => {
+          const aUnlocked = a.stages.some(s => s.is_unlocked) ? 1 : 0;
+          const bUnlocked = b.stages.some(s => s.is_unlocked) ? 1 : 0;
+          return bUnlocked - aUnlocked;
+        });
+
+        entries.forEach(([sound, info]) => {
+          const isWeakUnlocked = info.stages.some(s => s.is_unlocked);
           const div = document.createElement("div");
           div.style.marginBottom = "14px";
-          div.innerHTML = `<h5 style="color: #93c5fd; margin-bottom: 6px;">${sound} Progression (Mastery: ${info.mastery_percentage}%)</h5>`;
+          div.style.cssText = "margin-bottom: 14px; border-radius: 8px; padding: 8px;" +
+            (isWeakUnlocked ? " background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25);" : "");
+          div.innerHTML = `<h5 style="color: #93c5fd; margin-bottom: 6px;">
+            ${isWeakUnlocked ? "🔓 " : ""}${sound} Progression (Mastery: ${info.mastery_percentage}%)
+          </h5>`;
 
           info.stages.forEach(st => {
             const item = document.createElement("div");
@@ -744,11 +805,46 @@
             div.appendChild(item);
           });
 
+          if (info.accent_note) {
+            const note = document.createElement("div");
+            note.style.cssText = "font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; font-style: italic;";
+            note.textContent = info.accent_note;
+            div.appendChild(note);
+          }
+
+          if (info.practice_words && info.practice_words.length > 0) {
+            const label = document.createElement("div");
+            label.style.cssText = "font-size: 0.78rem; color: #fca5a5; margin-top: 8px; margin-bottom: 4px; font-weight: 600;";
+            label.textContent = "Practice words — click one to load it above:";
+            div.appendChild(label);
+
+            const pillRow = document.createElement("div");
+            pillRow.style.cssText = "display: flex; flex-wrap: wrap; gap: 6px;";
+            info.practice_words.forEach(w => {
+              const pill = document.createElement("button");
+              pill.textContent = w;
+              pill.type = "button";
+              pill.style.cssText = "background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.35);" +
+                " padding: 3px 9px; border-radius: 999px; font-size: 0.8rem; cursor: pointer;";
+              pill.onclick = () => practiceWord(sound, w);
+              pillRow.appendChild(pill);
+            });
+            div.appendChild(pillRow);
+          }
+
           list.appendChild(div);
         });
       } catch (err) {
         console.error("Refresh learning path error", err);
       }
+    }
+
+    function practiceWord(sound, word) {
+      document.getElementById("soundSelect").value = sound;
+      populateWords(sound);
+      document.getElementById("wordSelect").value = word;
+      onWordChange();
+      document.getElementById("wordSelect").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     function switchTab(tab) {

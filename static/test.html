@@ -597,10 +597,12 @@
   }
 
   // ─── Recording ───
+  const MAX_RECORD_MS = 2500; // Duolingo-style: auto-stop a single word attempt
+  let recordTimeout = null;
+  let recordCountdownInterval = null;
+
   async function toggleRecording() {
-    const btn = document.getElementById('recBtn');
     const status = document.getElementById('recStatus');
-    const wave = document.getElementById('waveform');
 
     if (!isRecording) {
       try {
@@ -627,26 +629,47 @@
 
         mediaRecorder.start();
         isRecording = true;
-        btn.classList.add('recording');
-        btn.textContent = '⏹️';
-        wave.classList.add('active');
-        status.textContent = '🔴 Recording... Speak the target word, then click stop';
+        document.getElementById('recBtn').classList.add('recording');
+        document.getElementById('recBtn').textContent = '⏹️';
+        document.getElementById('waveform').classList.add('active');
         status.style.color = '#ef4444';
         log('Recording started — speak clearly into your microphone', 'info');
+
+        // Auto-stop after MAX_RECORD_MS so a recording can't accidentally
+        // capture the word said more than once (which breaks phoneme alignment).
+        let msLeft = MAX_RECORD_MS;
+        status.textContent = `🔴 Recording... say the word once (auto-stops in ${(msLeft / 1000).toFixed(1)}s)`;
+        recordCountdownInterval = setInterval(() => {
+          msLeft -= 100;
+          if (msLeft > 0) {
+            status.textContent = `🔴 Recording... say the word once (auto-stops in ${(msLeft / 1000).toFixed(1)}s)`;
+          }
+        }, 100);
+        recordTimeout = setTimeout(stopRecording, MAX_RECORD_MS);
       } catch (e) {
         log('Microphone error: ' + e.message, 'err');
         alert('Could not access microphone: ' + e.message);
       }
     } else {
-      mediaRecorder.stop();
-      mediaRecorder.stream.getTracks().forEach(t => t.stop());
-      isRecording = false;
-      btn.classList.remove('recording');
-      btn.textContent = '🎙️';
-      wave.classList.remove('active');
-      status.style.color = '';
-      log('Recording stopped — processing audio...', 'info');
+      stopRecording();
     }
+  }
+
+  function stopRecording() {
+    if (!isRecording) return;
+    clearTimeout(recordTimeout);
+    clearInterval(recordCountdownInterval);
+    recordTimeout = null;
+    recordCountdownInterval = null;
+
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    isRecording = false;
+    document.getElementById('recBtn').classList.remove('recording');
+    document.getElementById('recBtn').textContent = '🎙️';
+    document.getElementById('waveform').classList.remove('active');
+    document.getElementById('recStatus').style.color = '';
+    log('Recording stopped — processing audio...', 'info');
   }
 
   async function submitAudio(blob) {
@@ -708,13 +731,19 @@
     area.classList.remove('hidden');
 
     const banner = document.getElementById('resultBanner');
+    const scoreStr = (typeof attempt.word_score === 'number') ? ` (${attempt.word_score.toFixed(0)}/100)` : '';
     if (attempt.is_correct) {
       banner.className = 'result-banner correct';
-      banner.textContent = '✅ Perfect Pronunciation!';
+      banner.textContent = '✅ Perfect Pronunciation!' + scoreStr;
     } else {
       banner.className = 'result-banner incorrect';
-      const errs = attempt.phoneme_errors.map(e => `${e.expected} → ${e.actual}`).join(', ');
-      banner.textContent = `⚠️ Substitutions: ${errs}`;
+      const errors = attempt.phoneme_errors || [];
+      if (errors.length > 0) {
+        const errs = errors.map(e => `${e.expected} → ${e.actual}`).join(', ');
+        banner.textContent = `⚠️ Substitutions: ${errs}${scoreStr}`;
+      } else {
+        banner.textContent = `⚠️ Unclear pronunciation — try again${scoreStr}`;
+      }
     }
 
     const view = document.getElementById('alignmentView');
@@ -798,7 +827,10 @@
   async function refreshReport() {
     if (!userId) return;
     try {
-      const res = await fetch(`/diagnostic/report/${userId}`);
+      const url = sessionId
+        ? `/diagnostic/report/${userId}?session_id=${sessionId}`
+        : `/diagnostic/report/${userId}`;
+      const res = await fetch(url);
       const data = await res.json();
       document.getElementById('reportContent').textContent = data.formatted_text_report || 'No report data yet.';
     } catch (e) {

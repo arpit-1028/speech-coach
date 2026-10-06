@@ -3,14 +3,25 @@ import logging
 from app.config import settings
 from app.speech.base import PhonemeRecognizer
 from app.speech.allosaurus_engine import AllosaurusRecognizer
+from app.speech.gop_engine import GOPScorer
 from app.speech.mock_engine import MockPhonemeRecognizer
 
 logger = logging.getLogger(__name__)
 
 _RECOGNIZER_REGISTRY: Dict[str, Type[PhonemeRecognizer]] = {
+    "gop": GOPScorer,
     "allosaurus": AllosaurusRecognizer,
     "mock": MockPhonemeRecognizer,
 }
+
+
+def _gop_dependencies_available() -> bool:
+    try:
+        import torch  # noqa: F401
+        import transformers  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 _ACTIVE_INSTANCE: PhonemeRecognizer = None
 
@@ -36,6 +47,10 @@ def get_phoneme_recognizer(engine_name: str = None) -> PhonemeRecognizer:
         )
         _ACTIVE_INSTANCE = MockPhonemeRecognizer()
         return _ACTIVE_INSTANCE
+
+    if target_engine == "gop" and not _gop_dependencies_available():
+        logger.warning("GOP engine needs torch + transformers. Falling back to Allosaurus.")
+        target_engine = "allosaurus"
 
     recognizer_cls = _RECOGNIZER_REGISTRY[target_engine]
     _ACTIVE_INSTANCE = recognizer_cls()
