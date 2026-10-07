@@ -1,3 +1,13 @@
+---
+title: Speech Coach New Approach
+emoji: 🎙️
+colorFrom: indigo
+colorTo: blue
+sdk: gradio
+app_file: app.py
+pinned: false
+---
+
 # Phoneme-Based Pronunciation Diagnostic Platform
 
 A high-precision, modular FastAPI backend built for **pure phoneme-based pronunciation diagnostics**.
