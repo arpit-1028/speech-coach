@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -51,10 +51,10 @@ def get_words_for_sound(sound: str):
 @spaces.GPU
 def evaluate_recording(sound: str, word: str, audio_path: str):
     if not word or not word.strip():
-        return "ΓÜá∩╕Å Please select a target word.", "", "", ""
+        return "⚠️ Please select a target word.", "", "", ""
 
     if not audio_path:
-        return "ΓÜá∩╕Å Please record your voice or upload an audio file first.", "", "", ""
+        return "⚠️ Please record your voice or upload an audio file first.", "", "", ""
 
     clean_word = word.strip().lower()
 
@@ -62,9 +62,9 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
     try:
         analysis = analyze_attempt(clean_word, audio_path=audio_path)
     except AudioQualityError as e:
-        return f"### Please record again: {e.report.reason}", "", "", ""
+        return f"### ⚠️ Please record again: {e.report.reason}", "", "", ""
     except Exception as e:
-        return f"Scoring failed for '{clean_word}': {e}", "", "", ""
+        return f"❌ Scoring failed for '{clean_word}': {e}", "", "", ""
     scores_by_index = analysis.phoneme_scores
 
     # 4. Update session statistics
@@ -83,31 +83,31 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
     # 5. Format Status Banner
     is_correct = len(analysis.errors) == 0 and all(ps["status"] == "correct" for ps in scores_by_index)
     if is_correct:
-        status_md = f"### Γ£à Excellent! All phonemes matched accurately for **'{clean_word}'**."
+        status_md = f"### ✅ Excellent! All phonemes matched accurately for **'{clean_word}'**."
     else:
-        err_details = ", ".join([f"{e['expected']} Γ₧ö {e['actual']}" for e in analysis.errors])
+        err_details = ", ".join([f"{e['expected']} ➔ {e['actual']}" for e in analysis.errors])
         unclear = [ps["phoneme"] for ps in scores_by_index if ps["status"] == "unclear" and not ps["heard"]]
         if unclear:
             err_details = ", ".join(filter(None, [err_details, "unclear: " + " ".join(unclear)]))
-        status_md = f"### ΓÜá∩╕Å Needs Practice: Substitution detected: **{err_details}**"
+        status_md = f"### ⚠️ Needs Practice: Substitution detected: **{err_details}**"
 
     # 6. Build Alignment Visual Table (HTML)
     table_rows = []
     for i, align in enumerate(analysis.alignments):
         score_cell = f"{scores_by_index[i]['score']:.0f}" if analysis.engine == "gop" else "-"
-        exp = align.expected or "ΓÇö"
-        act = align.actual or "ΓÇö"
-        exp_ipa = ARPABET_TO_IPA.get(exp, exp) if exp != "ΓÇö" else "ΓÇö"
-        act_ipa = ARPABET_TO_IPA.get(act, act) if act != "ΓÇö" else "ΓÇö"
+        exp = align.expected or "—"
+        act = align.actual or "—"
+        exp_ipa = ARPABET_TO_IPA.get(exp, exp) if exp != "—" else "—"
+        act_ipa = ARPABET_TO_IPA.get(act, act) if act != "—" else "—"
 
         if align.is_match:
-            badge = "<span style='color: #10b981; font-weight: bold;'>Γ£ö MATCH</span>"
+            badge = "<span style='color: #10b981; font-weight: bold;'>✔ MATCH</span>"
             row_bg = "rgba(16, 185, 129, 0.1)"
         else:
-            badge = "<span style='color: #ef4444; font-weight: bold;'>Γ£û MISMATCH</span>"
+            badge = "<span style='color: #ef4444; font-weight: bold;'>✖ MISMATCH</span>"
             row_bg = "rgba(239, 68, 68, 0.1)"
 
-        target_mark = "≡ƒÄ»" if align.is_target_sound else ""
+        target_mark = "🎯" if align.is_target_sound else ""
 
         table_rows.append(f"""
         <tr style='background: {row_bg}; border-bottom: 1px solid #334155;'>
@@ -156,7 +156,7 @@ def evaluate_recording(sound: str, word: str, audio_path: str):
     return status_md, alignment_html, raw_details, stats_md
 
 def generate_report():
-    lines = ["## ≡ƒôè Cumulative Diagnostic Assessment Report\n"]
+    lines = ["## 📊 Cumulative Diagnostic Assessment Report\n"]
     lines.append("| Sound | Total Tested | Correct | Incorrect | Mastery % | Clinical Status |")
     lines.append("|:---:|:---:|:---:|:---:|:---:|:---:|")
 
@@ -165,21 +165,21 @@ def generate_report():
         inc = session_stats[sound]["incorrect"]
         tot = c + inc
         if tot == 0:
-            status = "ΓÜ¬ Untested"
-            pct_str = "ΓÇö"
+            status = "⚪ Untested"
+            pct_str = "—"
         else:
             pct = round((c / tot) * 100)
             pct_str = f"{pct}%"
             if pct >= settings.STRONG_THRESHOLD:
-                status = "≡ƒƒó Strong"
+                status = "🟢 Strong"
             elif pct < settings.WEAK_THRESHOLD:
-                status = "≡ƒö┤ Weak"
+                status = "🔴 Weak"
             else:
-                status = "≡ƒƒí Developing"
+                status = "🟡 Developing"
 
         lines.append(f"| **{sound}** | {tot} | {c} | {inc} | {pct_str} | {status} |")
 
-    lines.append("\n### ≡ƒöì Recent Substitution Errors:")
+    lines.append("\n### 🔍 Recent Substitution Errors:")
     if not substitution_history:
         lines.append("*No errors recorded yet. Practice some words to generate evidence!*")
     else:
@@ -197,15 +197,15 @@ def reset_stats():
     substitution_history = []
     return "Session stats reset successfully."
 
-# ΓöÇΓöÇ Build Gradio UI ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── Build Gradio UI ─────────────────────────────────────────────────────────────
 with gr.Blocks(title="Speech Coach - Phoneme Diagnostic Platform") as demo:
     gr.Markdown("""
-    # ≡ƒÄÖ∩╕Å Pure Phoneme Diagnostic Platform
-    ### Mobile-Friendly Testing Harness ΓÇö *wav2vec2 GOP (Goodness of Pronunciation) + CTC Forced Alignment*
+    # 🎙️ Pure Phoneme Diagnostic Platform
+    ### Mobile-Friendly Testing Harness — *wav2vec2 GOP (Goodness of Pronunciation) + CTC Forced Alignment*
     *This tests pure acoustic phoneme extraction directly from your voice without Speech-to-Text bias.*
     """)
 
-    with gr.Tab("≡ƒÄ» Live Word Diagnostic"):
+    with gr.Tab("🎯 Live Word Diagnostic"):
         with gr.Row():
             with gr.Column(scale=1):
                 sound_dropdown = gr.Dropdown(
@@ -232,10 +232,10 @@ with gr.Blocks(title="Speech Coach - Phoneme Diagnostic Platform") as demo:
                     label="3. Speak into your microphone",
                 )
 
-                eval_btn = gr.Button("≡ƒÜÇ Submit & Evaluate Pronunciation", variant="primary", size="lg")
+                eval_btn = gr.Button("🚀 Submit & Evaluate Pronunciation", variant="primary", size="lg")
 
             with gr.Column(scale=1):
-                status_output = gr.Markdown("### ≡ƒÄÖ∩╕Å Ready. Select a word, speak, and tap Submit.")
+                status_output = gr.Markdown("### 🎙️ Ready. Select a word, speak, and tap Submit.")
                 alignment_output = gr.HTML()
                 stats_output = gr.Markdown()
                 raw_output = gr.Markdown()
@@ -246,7 +246,7 @@ with gr.Blocks(title="Speech Coach - Phoneme Diagnostic Platform") as demo:
             outputs=[status_output, alignment_output, raw_output, stats_output]
         )
 
-    with gr.Tab("≡ƒôê Full Sound Mastery & Confusion Report"):
+    with gr.Tab("📈 Full Sound Mastery & Confusion Report"):
         gr.Markdown("Click below to compute your evidence-based diagnostic report across all target sounds.")
         report_btn = gr.Button("Generate Full Diagnostic Report", variant="secondary")
         report_output = gr.Markdown()
